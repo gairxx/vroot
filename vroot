@@ -1,0 +1,634 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VERSION="2.0.0"
+SELF="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || readlink -f "$0")"
+ROOTDIR="$(cd "$(dirname "$SELF")" && pwd)"
+
+VROOT_HOME="${VROOT_HOME:-$HOME/.local/share/vroot}"
+VROOT_CONFIG="${VROOT_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/vroot}"
+ENVS_DIR="$VROOT_HOME/envs"
+CACHE_DIR="$VROOT_HOME/cache"
+BASES_DIR="$CACHE_DIR/.bases"
+INST_DIR="$VROOT_HOME/instances"
+TMP_DIR="$VROOT_HOME/tmp"
+BUILTIN_RECIPES="$ROOTDIR/recipes"
+USER_RECIPES="$VROOT_CONFIG/recipes"
+
+ALPINE_VER="3.20.3"
+ALPINE_URL="https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64/alpine-minirootfs-${ALPINE_VER}-x86_64.tar.gz"
+DEBIAN_IMG="debian:bookworm-slim"
+
+RESERVED=" build ls list rm delete save load icon recipe recipes envs images prune info help version doctor "
+
+C0=$'\033[0m'; CB=$'\033[1;34m'; CG=$'\033[1;32m'; CY=$'\033[1;33m'; CR=$'\033[1;31m'; CD=$'\033[2m'
+log()  { printf '%s==>%s %s\n' "$CB" "$C0" "$*" >&2; }
+ok()   { printf '%s  ok%s %s\n' "$CG" "$C0" "$*" >&2; }
+warn() { printf '%swarn%s %s\n' "$CY" "$C0" "$*" >&2; }
+die()  { printf '%serr %s %s\n' "$CR" "$C0" "$*" >&2; exit 1; }
+need_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+ensure_dirs() {
+    mkdir -p "$ENVS_DIR" "$CACHE_DIR" "$BASES_DIR" "$INST_DIR" "$TMP_DIR"
+}
+
+valid_name() {
+    [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || return 1
+    [[ "$RESERVED" == *" $1 "* ]] && return 1
+    return 0
+}
+
+rget() { sed -n "s/^[[:space:]]*$2[[:space:]]*=[[:space:]]*//p" "$1" | head -1; }
+rall() { sed -n "s/^[[:space:]]*$2[[:space:]]*=[[:space:]]*//p" "$1"; }
+
+meta_get() { [[ -f "$1" ]] && sed -n "s/^$2=//p" "$1" | head -1 || true; }
+fsize() { du -sh "$1" 2>/dev/null | cut -f1 || true; }
+meta_set() { local f="$1"; shift; : > "$f"; local kv; for kv in "$@"; do printf '%s\n' "$kv" >> "$f"; done; }
+
+declare -A RECIPE_FILE
+declare -A RECIPE_DESC
+
+load_recipes() {
+    RECIPE_FILE=(); RECIPE_DESC=()
+    local dir f name prov p
+    for dir in "$BUILTIN_RECIPES" "$USER_RECIPES"; do
+        [[ -d "$dir" ]] || continue
+        for f in "$dir"/*.conf; do
+            [[ -f "$f" ]] || continue
+            name="$(basename "$f" .conf)"
+            prov="$(rget "$f" provides)"; prov="${prov:-$name}"
+            RECIPE_FILE["$name"]="$f"
+            for p in ${prov//,/ }; do RECIPE_FILE["$p"]="$f"; done
+            RECIPE_DESC["$name"]="$(rget "$f" description)"
+        done
+    done
+}
+
+recipe_canonical() { basename "$1" .conf; }
+
+resolve_recipes() {
+    local flag f
+    for flag in "$@"; do
+        f="${RECIPE_FILE[$flag]:-}"
+        [[ -n "$f" ]] || die "unknown flag -$flag (no recipe). Try: vroot recipe list"
+        printf '%s\n' "$f"
+    done | awk '!seen[$0]++'
+}
+
+ensure_base() {
+    local base="$1" dest="$BASES_DIR/$base" marker="$BASES_DIR/.${base}.ready"
+    [[ -f "$marker" && -d "$dest" ]] && return 0
+    rm -rf "$dest"; mkdir -p "$dest"
+    case "$base" in
+        alpine)
+            log "fetching Alpine $ALPINE_VER base rootfs ..."
+            local tb="$TMP_DIR/.alpine.$$.tar.gz"
+            if need_cmd curl; then curl -fLsS -o "$tb" "$ALPINE_URL" || die "download failed"
+            else wget -qO "$tb" "$ALPINE_URL" || die "download failed"; fi
+            tar -xzf "$tb" -C "$dest" || die "extract failed"
+            rm -f "$tb"
+            ;;
+        debian)
+            need_cmd docker || die "docker is required for the Debian base (apt install docker.io)"
+            log "fetching Debian base ('$DEBIAN_IMG') via docker ..."
+            local cid
+            cid="$(docker create "$DEBIAN_IMG")" || die "docker create failed"
+            docker export "$cid" | tar -x -C "$dest" || { docker rm -f "$cid" >/dev/null 2>&1; die "export failed"; }
+            docker rm "$cid" >/dev/null 2>&1 || true
+            ;;
+        *) die "unknown base '$base' (use alpine or debian)" ;;
+    esac
+    : > "$marker"
+}
+
+run_in_root() {
+    local dir="$1" script="$2"
+    bwrap --unshare-user --uid 0 --gid 0 --cap-add ALL \
+        --unshare-pid --unshare-uts --unshare-ipc --die-with-parent \
+        --bind "$dir" / --proc /proc --dev /dev --tmpfs /tmp --tmpfs /run \
+        --ro-bind-try /sys /sys --hostname builder \
+        --setenv PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+        -- /bin/sh -c "$script"
+}
+
+build_env() {
+    ensure_dirs
+    local flags=("$@"); [[ ${#flags[@]} -eq 0 ]] && flags=(base)
+
+    local -a rfiles=()
+    local f
+    while IFS= read -r f; do rfiles+=("$f"); done < <(resolve_recipes "${flags[@]}")
+    [[ ${#rfiles[@]} -gt 0 ]] || die "no recipes resolved"
+
+    local base="alpine"
+    for f in "${rfiles[@]}"; do [[ "$(rget "$f" base)" == debian ]] && base="debian"; done
+
+    local packages="" setup="" envs="" paths="" verify=""
+    local -a names=()
+    for f in "${rfiles[@]}"; do
+        names+=("$(recipe_canonical "$f")")
+        local pk; pk="$(rall "$f" packages | tr '\n' ' ')"; packages+=" $pk"
+        local st; st="$(rall "$f" setup)";     [[ -n "$st" ]] && setup+="$st"$'\n'
+        local ev; ev="$(rget "$f" env)";        [[ -n "$ev" ]] && envs+="${ev//,/ }"$'\n'
+        local pa; pa="$(rget "$f" path)";       [[ -n "$pa" ]] && paths+="${pa}:"$'\n'
+        local vf; vf="$(rall "$f" verify)";     [[ -n "$vf" ]] && verify+="$vf"$'\n'
+    done
+    packages="$(printf '%s' "$packages" | tr ' ' '\n' | awk 'NF' | awk '!s[$0]++' | tr '\n' ' ')"
+    paths="${paths%$'\n'}"; paths="${paths//$'\n'/}"; paths="${paths%:}"
+
+    local slug
+    slug="$(printf '%s\n' "${names[@]}" | awk '!s[$0]++' | paste -sd+ -)"
+
+    local hash
+    hash="$( { for f in "${rfiles[@]}"; do cat "$f"; done; echo "base=$base"; } | sha256sum | cut -c1-10 )"
+
+    local envfile="$ENVS_DIR/${slug}-${hash}.sqfs"
+    if [[ -f "$envfile" ]]; then printf '%s\n' "$envfile"; return 0; fi
+
+    ensure_base "$base"
+    log "building env '$slug' (base=$base) ..."
+    local tmp="$TMP_DIR/build.$$"
+    rm -rf "$tmp"; mkdir -p "$tmp"
+    cp -a "$BASES_DIR/$base/." "$tmp/"
+    mkdir -p "$tmp/proc" "$tmp/sys" "$tmp/dev" "$tmp/tmp" "$tmp/run" "$tmp/root" "$tmp/etc/vroot"
+    chmod 1777 "$tmp/tmp" 2>/dev/null || true
+    [[ -r /etc/resolv.conf ]] && cp /etc/resolv.conf "$tmp/etc/resolv.conf" 2>/dev/null || true
+
+    case "$base" in
+        alpine)
+            printf '%s\n' \
+                "https://dl-cdn.alpinelinux.org/alpine/v${ALPINE_VER%.*}/main" \
+                "https://dl-cdn.alpinelinux.org/alpine/v${ALPINE_VER%.*}/community" \
+                > "$tmp/etc/apk/repositories"
+            ;;
+        debian)
+            printf 'deb http://deb.debian.org/debian bookworm main\ndeb http://deb.debian.org/debian bookworm-updates main\n' \
+                > "$tmp/etc/apt/sources.list"
+            ;;
+    esac
+
+    {
+        if [[ -n "$paths" ]]; then
+            printf 'export PATH=%s:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n' "$paths"
+        else
+            printf 'export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n'
+        fi
+        [[ -n "$envs" ]] && printf '%s\n' "$envs"
+    } > "$tmp/etc/vroot/env"
+
+    printf '\n[ -r /etc/vroot/env ] && . /etc/vroot/env\n' >> "$tmp/etc/profile"
+
+    local script=""
+    script+="set -e"$'\n'
+    if [[ -n "$packages" ]]; then
+        case "$base" in
+            alpine) script+="apk update"$'\n'"apk add --no-cache $packages"$'\n' ;;
+            debian) script+="export DEBIAN_FRONTEND=noninteractive"$'\n'"apt-get update"$'\n'"apt-get install -y --no-install-recommends $packages"$'\n' ;;
+        esac
+    fi
+    [[ -n "$setup" ]]  && script+="$setup"
+    [[ -n "$verify" ]] && script+="$verify"
+
+    if ! run_in_root "$tmp" "$script" 1>&2; then
+        rm -rf "$tmp"
+        die "build failed for env '$slug'"
+    fi
+
+    mksquashfs "$tmp" "$envfile" -all-root -comp zstd -noappend -no-progress -quiet >/dev/null 2>&1 \
+        || { rm -rf "$tmp"; die "mksquashfs failed"; }
+    rm -rf "$tmp"
+    ok "built env '$slug' -> $envfile ($(fsize "$envfile"))"
+    printf '%s\n' "$envfile"
+}
+
+ensure_cache() {
+    local envfile="$1"
+    local cache="$2"
+    local marker="$CACHE_DIR/.$(basename "$cache").ready"
+    if [[ -f "$marker" && -d "$cache" ]]; then return 0; fi
+    mkdir -p "$CACHE_DIR"
+    rm -rf "$cache"
+    unsquashfs -q -d "$cache" "$envfile" >/dev/null 2>&1 || die "cannot unpack env image: $envfile"
+    : > "$marker"
+}
+
+O_FLAGS=(); O_ENV=(); O_VOLUMES=(); O_CMD=()
+O_OFFLINE=0; O_CLEAN=0; O_KEEP=0; O_RM=0
+O_NAME=""; O_HOSTNAME=""; O_CWD=""; O_ENVFILE=""
+
+parse_args() {
+    O_FLAGS=(); O_ENV=(); O_VOLUMES=(); O_CMD=()
+    O_OFFLINE=0; O_CLEAN=0; O_KEEP=0; O_RM=0
+    O_NAME=""; O_HOSTNAME=""; O_CWD=""; O_ENVFILE=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --) shift; O_CMD=("$@"); break ;;
+            -offline|--offline|-o) O_OFFLINE=1; shift ;;
+            -net|--net) O_OFFLINE=0; shift ;;
+            -clean|--clean) O_CLEAN=1; shift ;;
+            -keep|--keep|-k) O_KEEP=1; shift ;;
+            -rm|--rm) O_RM=1; shift ;;
+            -v|--volume) O_VOLUMES+=("${2:?use -v SRC[:DST][:ro]}"); shift 2 ;;
+            -v=*|--volume=*) O_VOLUMES+=("${1#*=}"); shift ;;
+            -env|--env) O_ENV+=("${2:?use -env K=V}"); shift 2 ;;
+            -env=*|--env=*) O_ENV+=("${1#*=}"); shift ;;
+            -cwd|--cwd) O_CWD="${2:?use -cwd DIR}"; shift 2 ;;
+            -cwd=*|--cwd=*) O_CWD="${1#*=}"; shift ;;
+            -name|--name) O_NAME="${2:?use -name NAME}"; shift 2 ;;
+            -name=*|--name=*) O_NAME="${1#*=}"; shift ;;
+            -hostname|--hostname) O_HOSTNAME="${2:?}"; shift 2 ;;
+            -hostname=*|--hostname=*) O_HOSTNAME="${1#*=}"; shift ;;
+            -h|--help) O_NAME="__help__"; shift ;;
+            -*) local fl="${1#-}"; fl="${fl#-}"
+                if [[ -n "${RECIPE_FILE[$fl]:-}" ]]; then O_FLAGS+=("$fl"); else die "unknown flag -$fl (try: vroot recipe list)"; fi
+                shift ;;
+            *.sqfs) [[ -f "$1" ]] || die "no such image file: $1"; O_ENVFILE="$1"; shift ;;
+            */*)    [[ -f "$1" ]] || die "not a sandbox name or file: $1"; O_ENVFILE="$1"; shift ;;
+            *) [[ -z "$O_NAME" ]] || die "unexpected argument: $1"; O_NAME="$1"; shift ;;
+        esac
+    done
+}
+
+launch() {
+    local envfile="$1" name="${2:-}"
+    local cname cache
+    cname="$(basename "$envfile" .sqfs)"
+    cache="$CACHE_DIR/$cname"
+    ensure_cache "$envfile" "$cache"
+
+    local upper work merged ram base idir
+    if [[ -n "$name" ]]; then
+        valid_name "$name" || die "invalid sandbox name: '$name'"
+        idir="$INST_DIR/$name"
+        if [[ ! -d "$idir" ]]; then
+            mkdir -p "$idir"
+            meta_set "$idir/meta" "ENV=$cname" "CREATED=$(date -Is)"
+        fi
+        upper="$idir/upper"; work="$idir/work"; merged="$idir/.merged"
+        mkdir -p "$upper" "$work" "$merged"
+        rm -rf "$work"/* 2>/dev/null || true
+        ram=""
+    else
+        base="$TMP_DIR/run.$$"
+        rm -rf "$base"; mkdir -p "$base/ram"
+        ram="$base/ram"; upper="$ram/upper"; work="$ram/work"; merged="$ram/merged"
+    fi
+
+    local host="${O_HOSTNAME:-${name:-vroot}}"
+    local cwd="${O_CWD:-/root}"
+
+    local -a bargs=( bwrap --unshare-user --uid 0 --gid 0 --cap-add ALL
+        --unshare-pid --unshare-uts --unshare-ipc --die-with-parent
+        --bind "$merged" / --proc /proc --dev /dev --tmpfs /tmp --tmpfs /run
+        --ro-bind-try /sys /sys --hostname "$host" --chdir "$cwd" )
+    [[ "$O_OFFLINE" == 1 ]] && bargs+=(--unshare-net)
+    [[ "$O_CLEAN" == 1 ]] && bargs+=(--clearenv)
+    bargs+=(--setenv PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin)
+    bargs+=(--setenv HOME /root)
+    bargs+=(--setenv VROOT_ENV "$cname")
+    bargs+=(--setenv TERM "${TERM:-xterm-256color}")
+
+    local e
+    for e in "${O_ENV[@]}"; do bargs+=(--setenv "${e%%=*}" "${e#*=}"); done
+
+    local v src dst mode
+    for v in "${O_VOLUMES[@]}"; do
+        src="${v%%:*}"; dst="${v#*:}"; mode="rw"
+        if [[ "$dst" == *:* ]]; then mode="${dst##*:}"; dst="${dst%:*}"; fi
+        [[ "$dst" == "$v" || -z "$dst" ]] && dst="$src"
+        case "$dst" in /*) ;; *) dst="/$dst" ;; esac
+        case "$src" in /*) ;; *) src="$PWD/$src" ;; esac
+        case "$mode" in
+            ro) bargs+=(--ro-bind-try "$src" "$dst") ;;
+            rw) bargs+=(--bind-try "$src" "$dst") ;;
+            *)  die "bad -v mode '$mode' (use :ro)" ;;
+        esac
+    done
+
+    local -a cmd=("${O_CMD[@]}")
+    [[ ${#cmd[@]} -eq 0 ]] && cmd=(/bin/sh -l)
+    bargs+=(-- "${cmd[@]}")
+
+    export VROOT_LOWER="$cache" VROOT_UPPER="$upper" VROOT_WORK="$work" VROOT_MERGED="$merged" VROOT_RAM="$ram"
+    unshare --user --map-root-user --mount -- /bin/sh -c '
+        if [ -n "$VROOT_RAM" ]; then mount -t tmpfs none "$VROOT_RAM" || exit 70; fi
+        mkdir -p "$VROOT_UPPER" "$VROOT_WORK" "$VROOT_MERGED" || exit 70
+        mount -t overlay overlay -o "lowerdir=$VROOT_LOWER,upperdir=$VROOT_UPPER,workdir=$VROOT_WORK" "$VROOT_MERGED" || exit 70
+        exec "$@"
+    ' sh "${bargs[@]}"
+    local rc=$?
+    [[ -n "$ram" ]] && rm -rf "$base"
+    [[ "$O_RM" == 1 && -n "$name" ]] && rm_instance "$name"
+    return $rc
+}
+
+rm_instance() {
+    local name="$1"
+    local idir="$INST_DIR/$name"
+    [[ -d "$idir" ]] || { warn "no such sandbox: $name"; return 0; }
+    chmod -R u+rwX "$idir" 2>/dev/null || true
+    rm -rf "$idir"
+    ok "removed sandbox '$name'"
+}
+
+cmd_run() {
+    load_recipes
+    parse_args "$@"
+    [[ "$O_NAME" == "__help__" ]] && { cmd_help; return 0; }
+
+    local envfile name="$O_NAME"
+    if [[ -n "$O_ENVFILE" ]]; then
+        envfile="$(readlink -f "$O_ENVFILE")"
+    elif [[ ${#O_FLAGS[@]} -gt 0 ]]; then
+        envfile="$(build_env "${O_FLAGS[@]}")" || exit 1
+    elif [[ -n "$name" && -f "$INST_DIR/$name/meta" ]]; then
+        envfile="$ENVS_DIR/$(meta_get "$INST_DIR/$name/meta" ENV).sqfs"
+    else
+        envfile="$(build_env base)" || exit 1
+    fi
+
+    if [[ -n "$name" && -f "$INST_DIR/$name/meta" ]]; then
+        local cur; cur="$(meta_get "$INST_DIR/$name/meta" ENV)"
+        if [[ "$(basename "$envfile" .sqfs)" != "$cur" ]]; then
+            die "sandbox '$name' already uses env '$cur'; use another name or 'vroot rm $name'"
+        fi
+    fi
+
+    launch "$envfile" "$name"
+}
+
+cmd_build() {
+    load_recipes
+    parse_args "$@"
+    local envfile
+    if [[ ${#O_FLAGS[@]} -gt 0 ]]; then envfile="$(build_env "${O_FLAGS[@]}")"; else envfile="$(build_env base)"; fi
+    ok "env file: $envfile"
+}
+
+cmd_ls() {
+    ensure_dirs
+    printf '%s%-22s %-26s %-6s %s%s\n' "$CB" SANDBOX ENV SIZE AGE "$C0"
+    local found=0 n idir env sz cre age t
+    for idir in "$INST_DIR"/*; do
+        [[ -d "$idir" ]] || continue
+        found=1; n="$(basename "$idir")"
+        env="$(meta_get "$idir/meta" ENV)"; cre="$(meta_get "$idir/meta" CREATED)"
+        sz="$(fsize "$idir")"
+        age="-"
+        if [[ -n "$cre" ]]; then t=$(date -d "$cre" +%s 2>/dev/null || echo 0); [[ $t -gt 0 ]] && age="$(( ($(date +%s)-t)/60 ))m"; fi
+        printf '%-22s %-26s %-6s %s\n' "$n" "${env:--}" "${sz:--}" "$age"
+    done
+    [[ $found == 1 ]] || printf '  %s(no sandboxes yet - try: vroot -python)%s\n' "$CD" "$C0"
+}
+
+cmd_rm() {
+    ensure_dirs
+    local all=0 chats=0 names=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --all|-a) all=1; shift ;;
+            *) names+=("$1"); shift ;;
+        esac
+    done
+    if [[ $all == 1 ]]; then
+        local d; for d in "$INST_DIR"/*; do [[ -d "$d" ]] && names+=("$(basename "$d")"); done
+    fi
+    [[ ${#names[@]} -gt 0 ]] || die "usage: vroot rm NAME... | --all"
+    local n; for n in "${names[@]}"; do rm_instance "$n"; done
+}
+
+cmd_envs() {
+    ensure_dirs
+    printf '%s%-40s %-8s %s%s\n' "$CB" "ENV IMAGE" SIZE "$C0"
+    local found=0 f
+    for f in "$ENVS_DIR"/*.sqfs; do
+        [[ -f "$f" ]] || continue
+        found=1
+        printf '%-40s %-8s\n' "$(basename "$f")" "$(fsize "$f")"
+    done
+    [[ $found == 1 ]] || printf '  %s(no env images yet - try: vroot -python)%s\n' "$CD" "$C0"
+    printf '\n%sbase rootfs cache:%s\n' "$CD" "$C0"
+    for f in "$BASES_DIR"/*; do [[ -d "$f" ]] && printf '  %-10s %s\n' "$(basename "$f")" "$(fsize "$f")"; done
+}
+
+cmd_prune() {
+    ensure_dirs
+    local f cname
+    for f in "$CACHE_DIR"/*; do
+        [[ -d "$f" ]] || continue
+        [[ "$(basename "$f")" == .bases ]] && continue
+        cname="$(basename "$f")"
+        if [[ ! -f "$ENVS_DIR/$cname.sqfs" ]]; then
+            rm -rf "$f" "$CACHE_DIR/.$cname.ready"
+            ok "pruned cache '$cname'"
+        fi
+    done
+    for f in "$TMP_DIR"/*; do [[ -e "$f" ]] && rm -rf "$f"; done
+}
+
+cmd_info() {
+    local name="${1:-}"; [[ -n "$name" ]] || die "usage: vroot info NAME"
+    local idir="$INST_DIR/$name"; [[ -d "$idir" ]] || die "no such sandbox: $name"
+    printf '%ssandbox%s %s\n' "$CB" "$C0" "$name"
+    printf '  env:     %s\n' "$(meta_get "$idir/meta" ENV)"
+    printf '  created: %s\n' "$(meta_get "$idir/meta" CREATED)"
+    printf '  size:    %s\n' "$(fsize "$idir")"
+    printf '  path:    %s\n' "$idir"
+    printf '  changed: %s files in upper layer\n' "$(find "$idir/upper" -mindepth 1 2>/dev/null | wc -l || true)"
+}
+
+cmd_save() {
+    local name="${1:-}" out="${2:-}"
+    [[ -n "$name" ]] || die "usage: vroot save NAME [OUT.sqfs]"
+    local idir="$INST_DIR/$name"; [[ -d "$idir" ]] || die "no such sandbox: $name"
+    out="${out:-$PWD/$name.sqfs}"
+    local envfile="$ENVS_DIR/$(meta_get "$idir/meta" ENV).sqfs"
+    [[ -f "$envfile" ]] || die "env image missing"
+    local cache="$CACHE_DIR/$(basename "$envfile" .sqfs)"
+    ensure_cache "$envfile" "$cache"
+    local upper="$idir/upper" work="$idir/work" merged="$idir/.merged"
+    mkdir -p "$work" "$merged"
+    export VROOT_LOWER="$cache" VROOT_UPPER="$upper" VROOT_WORK="$work" VROOT_MERGED="$merged"
+    log "packing sandbox '$name' -> $out ..."
+    unshare --user --map-root-user --mount -- /bin/sh -c '
+        mount -t overlay overlay -o "lowerdir=$VROOT_LOWER,upperdir=$VROOT_UPPER,workdir=$VROOT_WORK" "$VROOT_MERGED" || exit 70
+        exec mksquashfs "$VROOT_MERGED" "$1" -all-root -comp zstd -noappend -no-progress -quiet
+    ' sh "$out" >/dev/null 2>&1 || die "pack failed"
+    ok "saved -> $out ($(fsize "$out"))"
+}
+
+cmd_recipe() {
+    load_recipes
+    local sub="${1:-list}"; shift 2>/dev/null || true
+    case "$sub" in
+        list)
+            printf '%s%-12s %-32s %-7s %s%s\n' "$CB" FLAG PROVIDES BASE DESC "$C0"
+            local f name prov base desc
+            for f in "$BUILTIN_RECIPES"/*.conf "$USER_RECIPES"/*.conf; do
+                [[ -f "$f" ]] || continue
+                name="$(basename "$f" .conf)"; prov="$(rget "$f" provides)"; base="$(rget "$f" base)"
+                desc="$(rget "$f" description)"
+                printf '%-12s %-32s %-7s %s\n' "$name" "${prov:-$name}" "${base:-alpine}" "$desc"
+            done ;;
+        show) local n="${1:?usage: vroot recipe show NAME}"; cat "${RECIPE_FILE[$n]:?no recipe '$n'}" ;;
+        path) printf 'built-in: %s\nuser:     %s\n' "$BUILTIN_RECIPES" "$USER_RECIPES" ;;
+        edit) local n="${1:?usage: vroot recipe edit NAME}"; "${EDITOR:-nano}" "${RECIPE_FILE[$n]:?no recipe '$n'}" ;;
+        new)
+            local n="${1:?usage: vroot recipe new NAME}"
+            mkdir -p "$USER_RECIPES"
+            local dst="$USER_RECIPES/$n.conf"
+            [[ -e "$dst" ]] && die "recipe already exists: $dst"
+            cat > "$dst" <<TEMPLATE
+name = $n
+provides = $n
+base = alpine
+packages =
+setup =
+env =
+path =
+verify = command -v $n
+description = My $n environment
+docs =
+TEMPLATE
+            ok "created $dst"
+            "${EDITOR:-nano}" "$dst" ;;
+        *) die "usage: vroot recipe list|show NAME|new NAME|edit NAME|path" ;;
+    esac
+}
+
+cmd_icon() {
+    load_recipes
+    parse_args "$@"
+    ensure_dirs
+    local envfile slug
+    if [[ ${#O_FLAGS[@]} -gt 0 ]]; then envfile="$(build_env "${O_FLAGS[@]}")"; else envfile="$(build_env base)"; fi
+    slug="$(basename "$envfile" .sqfs)"
+    local flags_str="${O_FLAGS[*]:-base}"
+    local exec_line="$SELF"
+    local fl; for fl in "${O_FLAGS[@]}"; do exec_line+=" -$fl"; done
+    local apps="$HOME/.local/share/applications"
+    mkdir -p "$apps"
+    local desktop="$apps/vroot-$slug.desktop"
+    cat > "$desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=vroot: $slug
+Comment=Root shell sandbox with $flags_str
+Exec=$exec_line
+Terminal=true
+Icon=utilities-terminal
+Categories=Development;System;TerminalEmulator;
+Keywords=vroot;sandbox;root;container;
+EOF
+    ok "launcher: $desktop"
+    if [[ -d "$HOME/Desktop" ]]; then
+        cp "$desktop" "$HOME/Desktop/vroot-$slug.desktop"
+        chmod +x "$HOME/Desktop/vroot-$slug.desktop" 2>/dev/null || true
+        ok "desktop icon: $HOME/Desktop/vroot-$slug.desktop"
+    fi
+}
+
+cmd_doctor() {
+    printf '%svroot %s%s\n\n' "$CB" "$VERSION" "$C0"
+    need_cmd bwrap     && ok "bwrap: $(bwrap --version)"      || die "bubblewrap missing (apt install bubblewrap)"
+    need_cmd unshare   && ok "unshare: present"               || die "util-linux unshare missing"
+    need_cmd mksquashfs && ok "mksquashfs: present"           || die "squashfs-tools missing (apt install squashfs-tools)"
+    need_cmd unsquashfs && ok "unsquashfs: present"           || die "squashfs-tools missing"
+    need_cmd busybox   && ok "busybox: present"               || warn "busybox missing (only needed for the tiny base)"
+    need_cmd docker    && ok "docker: $(docker --version | cut -d, -f1)" || warn "docker missing (only needed for the Debian base)"
+    printf '\n'
+    local out
+    out="$(unshare --user --map-root-user --mount -- sh -c '
+        d=$(mktemp -d); mkdir -p "$d/u" "$d/w" "$d/m" "$d/l"
+        mount -t overlay overlay -o "lowerdir=$d/l,upperdir=$d/u,workdir=$d/w" "$d/m" 2>/dev/null && echo yes || echo no
+        umount "$d/m" 2>/dev/null || true
+        rm -rf "$d"' 2>/dev/null || true)"
+    [[ "$out" == yes ]] && ok "unprivileged overlayfs: supported (copy-on-write sandboxes)" || warn "overlayfs not available in userns"
+    printf '\n'
+    cmd_envs
+}
+
+cmd_help() {
+    cat <<EOF
+vroot $VERSION - a root shell in a sandbox, built from a flag.
+
+USAGE
+  vroot [FLAGS] [NAME] [OPTIONS] [-- COMMAND]
+
+  Bare 'vroot' opens a root shell. Add flags to include languages/tools.
+  A bare NAME makes the sandbox persistent (reuse it by name).
+
+FLAGS (one per tool; combine freely)
+  python node deno bun php ruby perl lua r julia
+  go rust zig nim crystal d swift
+  gcc clang cmake gfortran nasm
+  java kotlin scala clojure groovy dotnet fsharp
+  haskell elixir erlang ocaml
+  sqlite postgres mysql git openssh curl vim
+  base
+  (run 'vroot recipe list' for the full catalog and 'vroot recipe new NAME' to add your own)
+
+EXAMPLES
+  vroot                          root shell (Alpine base)
+  vroot -python                  root shell with Python
+  vroot -node -python            root shell with Node + Python
+  vroot -sqlite -python db       persistent sandbox named 'db'
+  vroot -rust -- cargo build     run a command instead of a shell
+  vroot -go -v ~/src:/src -- ls /src
+  vroot -node -offline           no network
+  vroot -python -cwd /tmp        different working directory
+
+OPTIONS
+  -v SRC[:DST][:ro]   expose a host path (default: nothing from the host)
+  -offline            no network (loopback only)
+  -cwd DIR            working directory (default /root)
+  -env K=V            set an environment variable
+  -name NAME          persistent sandbox name
+  -hostname H         hostname inside (default: the sandbox name)
+  -clean              empty environment
+  -rm                 delete the sandbox after this session
+
+MANAGEMENT
+  vroot ls                     list sandboxes
+  vroot rm NAME...|--all       delete sandboxes
+  vroot save NAME [OUT.sqfs]   pack a sandbox into one image file
+  vroot IMAGE.sqfs             boot from a saved image file
+  vroot icon -python           make a click-to-open desktop launcher
+  vroot recipe list|show|new|edit|path
+  vroot envs                   list built env images
+  vroot prune                  clear caches/tmp
+  vroot info NAME              sandbox details
+  vroot doctor                 check the host setup
+
+HOW IT WORKS
+  - flags pick recipes -> a single-file env image (envs/*.sqfs) is built once
+  - each session runs it via bubblewrap with full root capabilities, its own
+    namespaces and its own filesystem; your host is not visible by default
+  - see docs/BUILDING.md to add your own language/tool
+EOF
+}
+
+main() {
+    ensure_dirs
+    local cmd="${1:-}"
+    case "$cmd" in
+        "")          cmd_run ;;
+        build)       shift; cmd_build "$@" ;;
+        ls|list)     cmd_ls ;;
+        rm|delete)   shift; cmd_rm "$@" ;;
+        save)        shift; cmd_save "$@" ;;
+        load)        shift; cmd_run "$@" ;;
+        icon)        shift; cmd_icon "$@" ;;
+        recipe|recipes) shift; cmd_recipe "$@" ;;
+        envs|images) cmd_envs ;;
+        prune|gc)    cmd_prune ;;
+        info)        shift; cmd_info "$@" ;;
+        doctor)      cmd_doctor ;;
+        help|-h|--help) cmd_help ;;
+        version|-V|--version) printf 'vroot %s\n' "$VERSION" ;;
+        *)           cmd_run "$@" ;;
+    esac
+}
+
+main "$@"

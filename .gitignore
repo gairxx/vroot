@@ -1,0 +1,11 @@
+# v1 backup of the CLI, kept for reference only
+vroot.legacy
+
+# Runtime / build artifacts
+*.sqfs
+*.tar.gz
+
+# Editor / OS noise
+*.swp
+*~
+.DS_Store
