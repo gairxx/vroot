@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Documentation — vroot</title>
+<meta name="description" content="vroot documentation: usage, options, sandbox management, persistence, how environments are built and launched.">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐚</text></svg>">
+</head>
+<body>
+
+<nav>
+  <div class="brand"><span class="dot">$</span> vroot</div>
+  <div class="links">
+    <a href=".">Demo</a>
+    <a href="docs.html" class="active">Docs</a>
+    <a href="flags.html">Flags</a>
+    <a href="recipes.html">Recipes</a>
+    <a href="https://github.com/gairxx/vroot" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</nav>
+
+<div class="container">
+
+  <header class="hero">
+    <h1>Documentation</h1>
+    <p>Everything you need to use vroot, from the first command to portable single-file environments.</p>
+  </header>
+
+  <section>
+    <h2><span class="hash">#</span> Usage</h2>
+    <pre class="code-block"><code>vroot [FLAGS] [NAME] [OPTIONS] [-- COMMAND]</code></pre>
+    <ul>
+      <li><b>FLAGS</b> — one per tool or language, e.g. <code>-python</code>, <code>-node</code>. Combine freely; they merge into one environment.</li>
+      <li><b>NAME</b> — give the sandbox a name to make it persistent. Reuse it by name later.</li>
+      <li><b>-- COMMAND</b> — run a command and exit, instead of opening an interactive shell.</li>
+    </ul>
+
+    <h3>Options</h3>
+    <table>
+      <thead><tr><th>Option</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>-v SRC[:DST][:ro]</code></td><td>expose a host path (read-write, or read-only with <code>:ro</code>)</td></tr>
+        <tr><td><code>-offline</code></td><td>no network (loopback only)</td></tr>
+        <tr><td><code>-cwd DIR</code></td><td>working directory (default <code>/root</code>)</td></tr>
+        <tr><td><code>-env K=V</code></td><td>set an environment variable (repeatable)</td></tr>
+        <tr><td><code>-name NAME</code></td><td>persistent sandbox name</td></tr>
+        <tr><td><code>-hostname H</code></td><td>hostname inside (default: sandbox name)</td></tr>
+        <tr><td><code>-clean</code></td><td>start with an empty environment</td></tr>
+        <tr><td><code>-rm</code></td><td>delete the sandbox after this session</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2><span class="hash">#</span> Examples</h2>
+    <pre class="code-block"><code># disposable root shell
+vroot
+
+# a shell with a language
+vroot -python
+vroot -go
+
+# compose tools
+vroot -php -sqlite -git
+
+# one command, then exit
+vroot -node -- node -e 'console.log(process.version)'
+
+# persistent sandbox
+vroot -python work
+vroot work -- python3 -c 'print("still here")'
+
+# expose a host directory (rw), everything else hidden
+vroot -go -v ~/src:/src -- sh -c 'cd /src && go test ./...'
+
+# fully offline
+vroot -python -offline</code></pre>
+  </section>
+
+  <section>
+    <h2><span class="hash">#</span> Managing sandboxes</h2>
+    <table>
+      <thead><tr><th>Command</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>vroot ls</code></td><td>list sandboxes</td></tr>
+        <tr><td><code>vroot rm NAME... | --all</code></td><td>delete sandboxes</td></tr>
+        <tr><td><code>vroot info NAME</code></td><td>sandbox details</td></tr>
+        <tr><td><code>vroot save NAME [OUT.sqfs]</code></td><td>pack a sandbox (including your changes) into one image file</td></tr>
+        <tr><td><code>vroot OUT.sqfs</code></td><td>boot from a saved image file</td></tr>
+        <tr><td><code>vroot icon -python</code></td><td>create a click-to-open desktop launcher</td></tr>
+        <tr><td><code>vroot envs</code></td><td>list built environment images</td></tr>
+        <tr><td><code>vroot prune</code></td><td>clear caches and temporary files</td></tr>
+        <tr><td><code>vroot recipe list|show|new|edit|path</code></td><td>work with recipes</td></tr>
+        <tr><td><code>vroot doctor</code></td><td>check the host setup</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2><span class="hash">#</span> Persistence</h2>
+    <p>Ephemeral instances run on a temporary upper layer and are discarded on
+    exit. Name a sandbox to keep it:</p>
+    <pre class="code-block"><code>$ vroot -python work
+==> building env 'python' ...
+  ok built env -> envs/python-84d0423ed3.sqfs (25M)
+root@vroot:~# echo notes > /root/notes.txt
+root@vroot:~# exit
+
+$ vroot work -- cat /root/notes.txt
+notes</code></pre>
+    <p>Changed files live in <code>~/.local/share/vroot/instances/work/upper</code>.
+    <code>vroot save work out.sqfs</code> packs the whole thing into a single
+    portable image you can hand to anyone with vroot and boot with
+    <code>vroot out.sqfs</code>.</p>
+  </section>
+
+  <section>
+    <h2><span class="hash">#</span> How environments are built</h2>
+    <ol>
+      <li><b>Resolve.</b> Flags map to recipes (built-in in <code>recipes/</code>, yours in <code>~/.config/vroot/recipes/</code>). Recipes are merged: packages, setup steps, environment, <code>PATH</code> and verification.</li>
+      <li><b>Build once.</b> A minimal base rootfs — Alpine by default, Debian when a recipe needs glibc — is populated in a build sandbox with <code>apk</code>/<code>apt</code>, then packed with <code>mksquashfs</code> into <code>envs/&lt;flags&gt;-&lt;hash&gt;.sqfs</code>.</li>
+      <li><b>Launch.</b> Each session unpacks the image to a cache, mounts it with overlayfs (upper = tmpfs for throwaway, or the sandbox's <code>upper/</code> dir if persistent) and execs bubblewrap with full capabilities and isolated namespaces.</li>
+    </ol>
+    <div class="callout">Storage root: <code>~/.local/share/vroot</code> (override with <code>$VROOT_HOME</code>).
+    Recipes dir: <code>~/.config/vroot/recipes</code> (override with <code>$VROOT_CONFIG</code>).</div>
+  </section>
+
+  <section>
+    <h2><span class="hash">#</span> Requirements</h2>
+    <ul>
+      <li>Linux with unprivileged user namespaces (default on modern distros).</li>
+      <li><code>bubblewrap</code>, <code>util-linux</code>, <code>squashfs-tools</code>, <code>curl</code>.</li>
+      <li><code>docker</code> only for flags that target the Debian base (<code>bun</code>, <code>clojure</code>, <code>groovy</code>, <code>julia</code>, <code>kotlin</code>, <code>scala</code>, <code>swift</code>).</li>
+    </ul>
+    <p class="note">Run <code>vroot doctor</code> to check everything at once.</p>
+  </section>
+
+  <section>
+    <h2><span class="hash">#</span> FAQ</h2>
+    <h3>Is this Docker?</h3>
+    <p>No. Docker builds and runs OCI images via a daemon; great for services and
+    orchestration. vroot is a single script that gives an isolated root shell from a
+    single-file, copy-on-write image — no daemon, no image build, near-instant start.
+    Closer to proot or a beefed-up chroot.</p>
+    <h3>Do I need root or sudo?</h3>
+    <p>No. Everything runs through unprivileged user namespaces and bubblewrap.
+    Inside the sandbox you are <code>uid 0</code> with full capabilities, but confined by user,
+    PID, mount, UTS and IPC namespaces, and the host filesystem is not visible by default.</p>
+    <h3>Can I access my files?</h3>
+    <p>Yes, explicitly, with <code>-v ~/src:/src</code>. Nothing is shared until you ask.</p>
+    <h3>Why Alpine by default?</h3>
+    <p>Tiny and builds in seconds. Recipes that need glibc or apt-only packages
+    automatically opt into a Debian base.</p>
+    <h3>Does it work without systemd / in a container / under WSL?</h3>
+    <p>It needs unprivileged user namespaces. Run <code>vroot doctor</code> to check.</p>
+  </section>
+
+</div>
+
+<footer>
+  vroot — MIT licensed · <a href="https://github.com/gairxx/vroot" target="_blank" rel="noopener">github.com/gairxx/vroot</a>
+</footer>
+
+</body>
+</html>

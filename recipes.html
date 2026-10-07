@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recipes — vroot</title>
+<meta name="description" content="Build your own vroot environment: recipe format, fields, examples and how to install from packages or upstream releases.">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐚</text></svg>">
+</head>
+<body>
+
+<nav>
+  <div class="brand"><span class="dot">$</span> vroot</div>
+  <div class="links">
+    <a href=".">Demo</a>
+    <a href="docs.html">Docs</a>
+    <a href="flags.html">Flags</a>
+    <a href="recipes.html" class="active">Recipes</a>
+    <a href="https://github.com/gairxx/vroot" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</nav>
+
+<div class="container">
+
+  <header class="hero">
+    <h1>Build your own environment</h1>
+    <p>Every flag is a small recipe. Adding a language or tool usually takes a
+    few lines — no image building, no registry, no compilation.</p>
+  </header>
+
+  <section>
+    <h2><span class="hash">#</span> Create a recipe</h2>
+    <pre class="code-block"><code>vroot recipe new mytool      # creates &amp; opens ~/.config/vroot/recipes/mytool.conf</code></pre>
+    <p>Save it — <code>mytool.conf</code> instantly becomes the <code>-mytool</code> flag:</p>
+    <pre class="code-block"><code>vroot -mytool</code></pre>
+  </section>
+
+  <section>
+    <h2><span class="hash">#</span> Format</h2>
+    <pre class="code-block"><code>name = mytool            # required, usually the file name
+provides = mytool,mt     # extra flags/aliases (comma-separated)
+base = alpine            # alpiner | debian
+packages = mytool        # space-separated pkgs; repeatable
+setup =                  # shell snippet run as root during build; repeatable
+env = KEY=value          # comma-separated exports
+path = /opt/mytool/bin   # directories prepended to $PATH
+verify = mytool -V       # must exit 0 or the build fails
+description = My tool    # shown by `vroot recipe list`
+docs = https://example.com</code></pre>
+  </section>
+
+  <section>
+    <h2><span class="hash">#</span> Examples</h2>
+    <h3>Something available as a package</h3>
+    <pre class="code-block"><code>name = jq
+provides = jq,json
+base = alpine
+packages = jq
+verify = jq --version
+description = jq JSON processor</code></pre>
+
+    <h3>Install from an upstream release (no package)</h3>
+    <pre class="code-block"><code>name = mytool
+base = debian
+packages = curl ca-certificates unzip
+setup = cd /opt &amp;&amp; curl -fsSL https://example.com/mytool-1.0-linux-x64.zip -o m.zip \
+     &amp;&amp; unzip -q m.zip &amp;&amp; rm m.zip \
+     &amp;&amp; ln -sf /opt/mytool/bin/mytool /usr/local/bin/mytool
+path = /opt/mytool/bin
+verify = mytool --version
+description = mytool (upstream release)</code></pre>
+
+    <h3>Adding a language or a framework</h3>
+    <pre class="code-block"><code>name = fastapi
+provides = fastapi
+base = alpine
+packages = python3 py3-pip
+setup = pip install --break-system-packages --no-cache-dir fastapi uvicorn
+verify = python3 -c 'import fastapi'
+description = Python + FastAPI dev shell</code></pre>
+  </section>
+
+  <section>
+    <h2><span class="hash">#</span> Where recipes live</h2>
+    <table>
+      <thead><tr><th>Location</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>recipes/*.conf</code> (repo)</td><td>built-in recipes</td></tr>
+        <tr><td><code>~/.config/vroot/recipes/*.conf</code></td><td>your recipes; override built-ins</td></tr>
+      </tbody>
+    </table>
+    <div class="callout"><b>Combining:</b> pass several flags and all matching
+    recipes merge — if any one targets <code>debian</code>, the whole environment uses
+    Debian; packages, setup, env and path are concatenated; every <code>verify</code> must
+    pass. Each distinct combination is cached as its own single-file image.</div>
+  </section>
+
+  <section>
+    <h2><span class="hash">#</span> Test and share</h2>
+    <pre class="code-block"><code>vroot recipe show mytool         # print a recipe
+vroot -mytool -- mytool -V       # build (first time) and verify
+
+# pack a whole sandbox, including your changes, into one portable image
+vroot save my-sandbox mytool.sqfs
+vroot mytool.sqfs                # boot it anywhere with vroot installed</code></pre>
+  </section>
+
+</div>
+
+<footer>
+  vroot — MIT licensed · <a href="https://github.com/gairxx/vroot" target="_blank" rel="noopener">github.com/gairxx/vroot</a>
+</footer>
+
+</body>
+</html>

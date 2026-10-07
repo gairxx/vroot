@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flag catalog — vroot</title>
+<meta name="description" content="Complete vroot flag catalog: python, node, rust, go, php, sqlite, postgres and 35 more language and tool environments, one flag each.">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐚</text></svg>">
+</head>
+<body>
+
+<nav>
+  <div class="brand"><span class="dot">$</span> vroot</div>
+  <div class="links">
+    <a href=".">Demo</a>
+    <a href="docs.html">Docs</a>
+    <a href="flags.html" class="active">Flags</a>
+    <a href="recipes.html">Recipes</a>
+    <a href="https://github.com/gairxx/vroot" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</nav>
+
+<div class="container">
+
+  <header class="hero">
+    <h1>Flag catalog</h1>
+    <p>One flag per environment. Combine as many as you like — they are merged
+    into a single sandbox.</p>
+    <div class="badges">
+      <span class="badge b">42 environments</span>
+      <span class="badge b">composable</span>
+      <span class="badge b">aliases included</span>
+    </div>
+  </header>
+
+  <section>
+    <h2><span class="hash">#</span> Try it</h2>
+    <pre class="code-block"><code>vroot -python            vroot -node             vroot -rust
+vroot -php -sqlite -git  vroot -go -python work  vroot -kotlin</code></pre>
+    <p class="note">Missing something? It's a few lines — see <a href="recipes.html">Recipes</a>.</p>
+  </section>
+
+  <section>
+    <h2><span class="hash">#</span> Full list</h2>
+    <div class="card" style="overflow-x:auto">
+      <table id="flags-table">
+        <thead><tr><th>Flag</th><th>Aliases</th><th>Base</th><th>Shipped version</th></tr></thead>
+        <tbody id="flags-body"></tbody>
+      </table>
+    </div>
+    <p class="note">Alpine base = tiny &amp; fast build. Debian base = glibc/apt
+    (requires <code>docker</code> once on the host). Aliases are just <code>provides</code>
+    entries, so <code>-python3</code> and <code>-py</code> are the same environment as <code>-python</code>.</p>
+  </section>
+
+</div>
+
+<footer>
+  vroot — MIT licensed · <a href="https://github.com/gairxx/vroot" target="_blank" rel="noopener">github.com/gairxx/vroot</a>
+</footer>
+
+<script src="app.js"></script>
+<script>
+  window.addEventListener('DOMContentLoaded', function () {
+    var tbody = document.getElementById('flags-body');
+    (window.VRootCat || []).forEach(function (f) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td><code>-' + f[0] + '</code></td>' +
+        '<td><code>' + (f[1] || '&nbsp;').split(',').join('</code> <code>') + '</code></td>' +
+        '<td>' + f[2] + '</td>' +
+        '<td class="mono" style="color:var(--muted)">' + f[3] + '</td>';
+      tbody.appendChild(tr);
+    });
+  });
+</script>
+</body>
+</html>

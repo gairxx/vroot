@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vroot — a root shell in a sandbox: instant, isolated, single-file Linux environments</title>
+<meta name="description" content="vroot gives you an instant, isolated Linux root shell built from a flag. Lightweight Docker, proot and chroot alternative with no daemon and no sudo. Try the live interactive demo.">
+<meta name="keywords" content="root shell sandbox, unprivileged sandbox, container alternative, proot alternative, chroot alternative, bubblewrap, overlayfs, user namespaces, docker alternative, isolated dev shell, single-file environment, root without sudo">
+<meta property="og:title" content="vroot — a root shell in a sandbox">
+<meta property="og:description" content="Instant, isolated, single-file Linux development environments built from a flag. No daemon, no sudo, millisecond boot.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://gairxx.github.io/vroot/">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐚</text></svg>">
+</head>
+<body>
+
+<nav>
+  <div class="brand"><span class="dot">$</span> vroot</div>
+  <div class="links">
+    <a href="." class="active">Demo</a>
+    <a href="docs.html">Docs</a>
+    <a href="flags.html">Flags</a>
+    <a href="recipes.html">Recipes</a>
+    <a href="https://github.com/gairxx/vroot" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</nav>
+
+<div class="container">
+
+  <header class="hero">
+    <h1>A <span class="accent">root shell</span> in a sandbox,<br>built from a flag.</h1>
+    <p>Instant, isolated, single-file Linux development environments that boot in
+    milliseconds — no daemon, no sudo, no host access by default.</p>
+    <div class="badges">
+      <span class="badge g">µs boot</span>
+      <span class="badge g">real uid 0 · no sudo</span>
+      <span class="badge g">one .sqfs image per env</span>
+      <span class="badge b">bubblewrap + overlayfs</span>
+      <span class="badge b">42 built-in recipes</span>
+      <span class="badge b">MIT · open source</span>
+    </div>
+    <p>
+      <a class="btn" href="#demo">Try the demo ↓</a>
+      <a class="btn ghost" href="docs.html">Read the docs</a>
+      <a class="btn ghost" href="https://github.com/gairxx/vroot" target="_blank" rel="noopener">★ GitHub</a>
+    </p>
+  </header>
+
+  <!-- ================= INTERACTIVE DEMO ================= -->
+  <section id="demo">
+    <h2><span class="hash">#</span> Live demo</h2>
+    <p class="note">This terminal is a realistic simulation that runs entirely in
+    your browser. Type commands or click the chips below — you are root inside a
+    disposable sandbox, and your host stays hidden.</p>
+
+    <div class="term-wrap">
+      <div class="term-head">
+        <div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+        <span class="title">you@laptop — vroot terminal</span>
+        <span class="tag">in-browser · simulated</span>
+      </div>
+      <div class="term" id="term" tabindex="0">
+        <div id="term-out"></div>
+        <div class="in" id="term-in">
+          <span id="term-prompt"></span>
+          <input id="term-input" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="terminal input">
+        </div>
+      </div>
+    </div>
+
+    <h3>Click to run</h3>
+    <div class="card">
+      <p class="mono" style="margin:0 0 10px;color:var(--muted)">Suggestions</p>
+      <div class="chips">
+        <button class="chip" onclick="vrootDemoRun('vroot -python -- python3 -c \'print(2+2)\'')">vroot -python -- python3 -c 'print(2+2)'</button>
+        <button class="chip" onclick="vrootDemoRun('vroot -node -sqlite')">vroot -node -sqlite</button>
+        <button class="chip" onclick="vrootDemoRun('vroot -php -sqlite -git -- php -v | head -1')">vroot -php -sqlite -git</button>
+        <button class="chip" onclick="vrootDemoRun('vroot -python work -- id')">vroot -python work -- id</button>
+        <button class="chip" onclick="vrootDemoRun('vroot -offline -- ping example.com')">vroot -offline -- ping</button>
+        <button class="chip" onclick="vrootDemoRun('vroot recipe list')">vroot recipe list</button>
+        <button class="chip" onclick="vrootDemoRun('vroot ls')">vroot ls</button>
+        <button class="chip" onclick="vrootDemoRun('clear')">clear</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= QUICK START ================= -->
+  <section id="quickstart">
+    <h2><span class="hash">#</span> Quick start</h2>
+    <pre class="code-block"><code>vroot                      # a root shell (blank Alpine Linux)
+vroot -python              # a root shell that has Python
+vroot -node -python        # compose flags freely
+vroot -sqlite -python db   # a persistent sandbox named "db"
+vroot -rust -- cargo build # run one command instead of opening a shell</code></pre>
+    <pre class="code-block"><code>$ vroot -python -- sh -c 'id; hostname; ls /home'
+uid=0(root) gid=0(root)
+vroot
+ls: /home: No such file or directory   ← the host is not visible</code></pre>
+  </section>
+
+  <!-- ================= HOW IT WORKS ================= -->
+  <section id="how">
+    <h2><span class="hash">#</span> How it works</h2>
+    <div class="steps">
+      <div class="step">
+        <span class="n">1</span>
+        <h4>Resolve flags</h4>
+        <p>Each flag maps to a small recipe. <code>-php -sqlite -git</code> merges into one environment definition.</p>
+      </div>
+      <div class="step">
+        <span class="n">2</span>
+        <h4>Build once to a file</h4>
+        <p>A minimal Alpine (or Debian) rootfs is populated in a sandbox and packed into a single squashfs image.</p>
+      </div>
+      <div class="step">
+        <span class="n">3</span>
+        <h4>Launch copy-on-write</h4>
+        <p>The image is mounted with overlayfs and started via bubblewrap: real root, isolated namespaces, your host hidden.</p>
+      </div>
+    </div>
+    <div class="callout">
+      Want to understand it fully or add your own tool?
+      <a href="recipes.html">Recipe reference</a> · <a href="docs.html">Full docs</a>
+    </div>
+  </section>
+
+  <!-- ================= INSTALL ================= -->
+  <section id="install">
+    <h2><span class="hash">#</span> Install</h2>
+    <pre class="code-block"><code>git clone https://github.com/gairxx/vroot.git
+ln -s "$PWD/vroot/vroot" ~/.local/bin/vroot    # put it on PATH
+vroot doctor</code></pre>
+    <p class="note">Requires Linux with user namespaces, plus <code>bubblewrap</code>,
+    <code>util-linux</code> and <code>squashfs-tools</code>. <code>docker</code> is only
+    needed for flags that build on a Debian base.</p>
+  </section>
+
+  <!-- ================= COMPARISONS ================= -->
+  <section id="compare">
+    <h2><span class="hash">#</span> How it compares</h2>
+    <div class="card" style="overflow-x:auto">
+      <table>
+        <thead><tr><th></th><th><b>vroot</b></th><th>Docker / Podman</th><th>chroot</th><th>proot</th></tr></thead>
+        <tbody>
+          <tr><td>Boot time</td><td><span class="c-grn" style="color:var(--green)">~10–50 ms</span></td><td>~0.3–2 s</td><td>instant</td><td>~0.1–1 s</td></tr>
+          <tr><td>Needs root / daemon</td><td><span class="c-grn" style="color:var(--green)">no / no</span></td><td>no / yes</td><td>yes</td><td>no</td></tr>
+          <tr><td>Host filesystem hidden</td><td><span class="c-grn" style="color:var(--green)">yes</span></td><td>yes</td><td>no</td><td>partial</td></tr>
+          <tr><td>Real uid 0 inside</td><td><span class="c-grn" style="color:var(--green)">yes</span></td><td>yes</td><td>yes</td><td>no (faked)</td></tr>
+          <tr><td>Storage per env</td><td><span class="c-grn" style="color:var(--green)">one file</span></td><td>layers + container</td><td>directory</td><td>directory</td></tr>
+          <tr><td>Compose tools by flag</td><td><span class="c-grn" style="color:var(--green)">yes</span></td><td>Dockerfile</td><td>manual</td><td>manual</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  vroot — MIT licensed · <a href="https://github.com/gairxx/vroot" target="_blank" rel="noopener">github.com/gairxx/vroot</a>
+  · docs: <a href="docs.html">Docs</a> · <a href="flags.html">Flags</a> · <a href="recipes.html">Recipes</a>
+</footer>
+
+<script src="app.js"></script>
+<script>
+  function vrootDemoRun(line) {
+    var el = document.getElementById('term-input');
+    var val = el.value;
+    el.value = line;
+    if (window.__vrootDemo) window.__vrootDemo.run(line);
+    el.value = val;
+  }
+</script>
+</body>
+</html>
