@@ -645,6 +645,36 @@ cmd_doctor() {
     cmd_envs
 }
 
+cmd_banner() {
+    printf '%s' "$CB"
+    cat <<'ART'
+
+ __   __  ____   ___   ___  _____
+ \ \ / / |  _ \ / _ \ / _ \ |_   _|
+  \ V /  | |_) | | | | | | | |   | |
+   | |   |  _ < | |_| | | |_| |  | |
+   |_|   |_| \_\ \___/ \___/    |_|
+ART
+    printf '%s' "$C0"
+    printf '  %svroot %s%s — a root shell in a sandbox, built from a flag.\n\n' "$CD" "$VERSION" "$C0"
+    printf '  %sInstant, isolated, single-file Linux environments. No daemon, no sudo.%s\n\n' "$CD" "$C0"
+
+    printf '%sGETTING STARTED%s\n' "$CB" "$C0"
+    printf '  %-34s %s\n' 'vroot -python' 'a root shell with Python'
+    printf '  %-34s %s\n' 'vroot -node -python' 'compose flags freely'
+    printf '  %-34s %s\n' 'vroot -sqlite -python db' 'a persistent sandbox named "db"'
+    printf '  %-34s %s\n' 'vroot -rust -- cargo build' 'run one command, not a shell'
+    printf '  %-34s %s\n' 'vroot -python -offline' 'a sandbox with no network'
+    printf '\n'
+    printf '%sMORE%s\n' "$CB" "$C0"
+    printf '  %-34s %s\n' 'vroot help' 'full help and all options'
+    printf '  %-34s %s\n' 'vroot recipe list' 'browse the flag catalog'
+    printf '  %-34s %s\n' 'vroot ls' 'list your sandboxes'
+    printf '  %-34s %s\n' 'vroot filetype install' 'register the .vroot image file type'
+    printf '\n'
+    printf '  %sTry one of the commands above, or run "vroot help" for everything.%s\n' "$CD" "$C0"
+}
+
 cmd_help() {
     cat <<EOF
 vroot $VERSION - a root shell in a sandbox, built from a flag.
@@ -652,7 +682,7 @@ vroot $VERSION - a root shell in a sandbox, built from a flag.
 USAGE
   vroot [FLAGS] [NAME] [OPTIONS] [-- COMMAND]
 
-  Bare 'vroot' opens a root shell. Add flags to include languages/tools.
+  A bare 'vroot' prints this banner. Add flags to include languages/tools.
   A bare NAME makes the sandbox persistent (reuse it by name).
 
 FLAGS (one per tool; combine freely)
@@ -709,7 +739,7 @@ main() {
     ensure_dirs
     local cmd="${1:-}"
     case "$cmd" in
-        "")          cmd_run ;;
+        "")          cmd_banner ;;
         build)       shift; cmd_build "$@" ;;
         ls|list)     cmd_ls ;;
         rm|delete)   shift; cmd_rm "$@" ;;

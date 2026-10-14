@@ -13,7 +13,8 @@ milliseconds, is fully isolated from your host, and contains exactly the tools
 you asked for:
 
 ```sh
-vroot                      # a root shell (blank Alpine Linux)
+vroot                      # banner + quick-start help
+vroot -base                # a root shell (blank Alpine Linux)
 vroot -python              # a root shell that has Python
 vroot -node -python        # compose flags freely
 vroot -sqlite -python db   # a persistent sandbox named "db"
@@ -129,8 +130,11 @@ install -Dm755 vroot/vroot ~/.local/bin/vroot
 ## Quick start
 
 ```sh
-# A disposable root shell
+# Banner + quick-start help (no sandbox)
 vroot
+
+# A disposable root shell (blank Alpine)
+vroot -base
 
 # A root shell with a language
 vroot -python
