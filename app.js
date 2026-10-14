@@ -377,9 +377,33 @@
     return "<table><thead><tr><th>flag</th><th>aliases</th><th>base</th><th>shipped version</th></tr></thead><tbody>" + rows.join("") + "</tbody></table>";
   }
 
+  function printCliBanner() {
+    [
+      " __   __  ____   ___   ___  _____",
+      " \\ \\ / / |  _ \\ / _ \\ / _ \\ |_   _|",
+      "  \\ V /  | |_) | | | | | | | |   | |",
+      "   | |   |  _ < | |_| | | |_| |  | |",
+      "   |_|   |_| \\_\\ \\___/ \\___/    |_|"
+    ].forEach(function (l) { outAcc(l); });
+    outMut("vroot 2.1.0 — a root shell in a sandbox, built from a flag.");
+    outMut("");
+    outMut("GETTING STARTED");
+    outLn("  vroot -python                a root shell with Python");
+    outLn("  vroot -node -python          compose flags freely");
+    outLn("  vroot -sqlite -python db     a persistent sandbox named \"db\"");
+    outLn("  vroot -rust -- cargo build   run one command, not a shell");
+    outMut("");
+    outMut("MORE");
+    outLn("  vroot help                   full help and all options");
+    outLn("  vroot recipe list            browse the flag catalog");
+    outLn("  vroot filetype install       register the .vroot image file type");
+    outMut("");
+    outMut("Try one of the commands above, or run \"vroot help\" for everything.");
+  }
+
   function cmdVroot(arg) {
     var toks = arg.trim().split(/\s+/).filter(Boolean);
-    if (!toks.length) { enterSandbox([], null, false); return; }
+    if (!toks.length) { printCliBanner(); return; }
 
     if (toks[0] === "ls" || toks[0] === "list") {
       if (!S.saved.length) { outMut("no sandboxes yet — try: vroot -python work"); return; }

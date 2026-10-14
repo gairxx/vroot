@@ -32,6 +32,7 @@
     <h2><span class="hash">#</span> Usage</h2>
     <pre class="code-block"><code>vroot [FLAGS] [NAME] [OPTIONS] [-- COMMAND]</code></pre>
     <ul>
+      <li><b>bare <code>vroot</code></b> — prints a banner with a quick-start (it does not open a shell). Use <code>vroot -base</code> for a blank Alpine root shell.</li>
       <li><b>FLAGS</b> — one per tool or language, e.g. <code>-python</code>, <code>-node</code>. Combine freely; they merge into one environment.</li>
       <li><b>NAME</b> — give the sandbox a name to make it persistent. Reuse it by name later.</li>
       <li><b>-- COMMAND</b> — run a command and exit, instead of opening an interactive shell.</li>
@@ -55,8 +56,11 @@
 
   <section>
     <h2><span class="hash">#</span> Examples</h2>
-    <pre class="code-block"><code># disposable root shell
+    <pre class="code-block"><code># banner + quick-start help (no sandbox)
 vroot
+
+# disposable root shell (blank Alpine)
+vroot -base
 
 # a shell with a language
 vroot -python

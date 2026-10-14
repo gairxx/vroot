@@ -73,6 +73,7 @@
     <div class="card">
       <p class="mono" style="margin:0 0 10px;color:var(--muted)">Suggestions</p>
       <div class="chips">
+        <button class="chip" onclick="vrootDemoRun('vroot')">vroot</button>
         <button class="chip" onclick="vrootDemoRun('vroot -python -- python3 -c \'print(2+2)\'')">vroot -python -- python3 -c 'print(2+2)'</button>
         <button class="chip" onclick="vrootDemoRun('vroot -node -sqlite')">vroot -node -sqlite</button>
         <button class="chip" onclick="vrootDemoRun('vroot -php -sqlite -git -- php -v | head -1')">vroot -php -sqlite -git</button>
@@ -88,7 +89,8 @@
   <!-- ================= QUICK START ================= -->
   <section id="quickstart">
     <h2><span class="hash">#</span> Quick start</h2>
-    <pre class="code-block"><code>vroot                      # a root shell (blank Alpine Linux)
+    <pre class="code-block"><code>vroot                      # banner + quick-start help
+vroot -base                # a root shell (blank Alpine Linux)
 vroot -python              # a root shell that has Python
 vroot -node -python        # compose flags freely
 vroot -sqlite -python db   # a persistent sandbox named "db"
