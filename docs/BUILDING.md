@@ -140,7 +140,9 @@ recompilation, no registry. To share a fully built environment (including any
 state you changed), use:
 
 ```sh
-vroot save mysandbox mytool.sqfs
+vroot save mysandbox mytool.vroot
 ```
 
-and boot the resulting file on any machine with `vroot mytool.sqfs`.
+and boot the resulting file on any machine with `vroot mytool.vroot`. Run
+`vroot filetype install` once to have your desktop recognise `.vroot` images as
+their own file type.

@@ -61,7 +61,8 @@ tool installed** — without images to build, a daemon to run, or a slow boot.
 - **Composable.** `-php -sqlite -git` builds one environment containing all
   three. Every distinct combination is cached separately and reused.
 - **Single file.** Build once, then `save` a sandbox — including your changes —
-  into one portable `.sqfs` image you can boot anywhere.
+  into one portable `.vroot` image you can boot anywhere, and register as a
+  real file type on your desktop with `vroot filetype install`.
 - **Extensible.** Every flag is a small text recipe. Add your own language or
   tool in a few lines — see [docs/BUILDING.md](docs/BUILDING.md).
 
@@ -212,9 +213,9 @@ vroot [FLAGS] [NAME] [OPTIONS] [-- COMMAND]
 | `vroot ls` | list sandboxes |
 | `vroot rm NAME... \| --all` | delete sandboxes |
 | `vroot info NAME` | sandbox details |
-| `vroot save NAME [OUT.sqfs]` | pack a sandbox into one image file |
-| `vroot OUT.sqfs` | boot from a saved image file |
-| `vroot icon -python` | create a click-to-open desktop launcher |
+| `vroot save NAME [OUT.vroot]` | pack a sandbox into one `.vroot` image file |
+| `vroot OUT.vroot` | boot from a saved image file |
+| `vroot filetype install` | register the `.vroot` image file type with the OS |
 | `vroot envs` | list built environment images |
 | `vroot prune` | clear caches and temporary files |
 | `vroot recipe list\|show\|new\|edit\|path` | work with recipes |
@@ -302,8 +303,16 @@ Under `~/.local/share/vroot/` (`envs/`, `cache/`, `instances/`). Override with
 `$VROOT_CONFIG`).
 
 **How do I make a portable environment?**
-`vroot save NAME out.sqfs` writes a single image file; boot it with
-`vroot out.sqfs`.
+`vroot save NAME out.vroot` writes a single image file; boot it with
+`vroot out.vroot`. Images are squashfs under the hood and also work with a
+`.sqfs` extension.
+
+**Can my file manager recognise vroot images?**
+Yes. Run `vroot filetype install` once. It registers a custom
+`application/x-vroot-image` MIME type (globs `*.vroot` / `*.sqfs`, plus
+detection by squashfs magic) and a desktop handler, so images show a distinct
+type and open with `vroot`. Undo with `vroot filetype uninstall`;
+`vroot filetype status` shows what is installed.
 
 **Why Alpine by default?**
 Alpine images are tiny and build in seconds. Recipes that need glibc or
