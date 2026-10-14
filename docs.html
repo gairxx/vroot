@@ -87,9 +87,9 @@ vroot -python -offline</code></pre>
         <tr><td><code>vroot ls</code></td><td>list sandboxes</td></tr>
         <tr><td><code>vroot rm NAME... | --all</code></td><td>delete sandboxes</td></tr>
         <tr><td><code>vroot info NAME</code></td><td>sandbox details</td></tr>
-        <tr><td><code>vroot save NAME [OUT.sqfs]</code></td><td>pack a sandbox (including your changes) into one image file</td></tr>
-        <tr><td><code>vroot OUT.sqfs</code></td><td>boot from a saved image file</td></tr>
-        <tr><td><code>vroot icon -python</code></td><td>create a click-to-open desktop launcher</td></tr>
+        <tr><td><code>vroot save NAME [OUT.vroot]</code></td><td>pack a sandbox (including your changes) into one .vroot image</td></tr>
+        <tr><td><code>vroot OUT.vroot</code></td><td>boot from a saved image file</td></tr>
+        <tr><td><code>vroot filetype install</code></td><td>register .vroot as a custom file type with MIME/desktop handler</td></tr>
         <tr><td><code>vroot envs</code></td><td>list built environment images</td></tr>
         <tr><td><code>vroot prune</code></td><td>clear caches and temporary files</td></tr>
         <tr><td><code>vroot recipe list|show|new|edit|path</code></td><td>work with recipes</td></tr>
@@ -111,9 +111,9 @@ root@vroot:~# exit
 $ vroot work -- cat /root/notes.txt
 notes</code></pre>
     <p>Changed files live in <code>~/.local/share/vroot/instances/work/upper</code>.
-    <code>vroot save work out.sqfs</code> packs the whole thing into a single
+    <code>vroot save work out.vroot</code> packs the whole thing into a single
     portable image you can hand to anyone with vroot and boot with
-    <code>vroot out.sqfs</code>.</p>
+    <code>vroot out.vroot</code>.</p>
   </section>
 
   <section>

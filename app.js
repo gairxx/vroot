@@ -157,7 +157,7 @@
     print("<span class='c-grn'>  ok</span><span class='c-mut'> built env -&gt; envs/</span><span class='c-acc'>" + esc(env + "-" + hash(env) + ".sqfs") + "</span><span class='c-mut'> (" + fmtSize(fileSize(flags)) + ")</span>");
     outMut("");
     var sandbox = name || "(throwaway)";
-    print("<span class='c-acc'>vroot 2.0.0</span> <span class='c-mut'>sandbox:</span> <span class='c-fg'>" + esc(sandbox) + "</span>" +
+    print("<span class='c-acc'>vroot 2.1.0</span> <span class='c-mut'>sandbox:</span> <span class='c-fg'>" + esc(sandbox) + "</span>" +
       "  <span class='c-mut'>base=" + baseOf(flags) + "</span>" +
       "  <span class='c-mut'>tools=</span><span class='c-fg'>" + esc(toolNames()) + "</span>");
     print("<span class='c-mut'>  network: </span><span class='" + (offline ? "c-red" : "c-grn") + "'>" + (offline ? "OFF (unshared)" : "on") + "</span>" +
@@ -422,17 +422,29 @@
       outMut("vroot FLAGS [NAME] [OPTIONS] [-- COMMAND]");
       outMut("  try:  vroot -python          vroot -node -sqlite          vroot -python -- python3 -c \"print(2+2)\"");
       outMut("        vroot -python work     vroot work -- id             vroot -offline");
+      outMut("  manage: vroot save work out.vroot    vroot out.vroot    vroot filetype install");
       return;
     }
     if (toks[0] === "save") {
-      outOk("saved -> " + toks[1] + ".sqfs  (" + (8 + toks[1].length) + "M)");
+      outOk("saved -> " + toks[1] + ".vroot  (" + (8 + toks[1].length) + "M)");
       return;
     }
-    if (toks[0] === "icon") {
-      outOk("launcher: ~/.local/share/applications/vroot-" + (toks[1] || "base") + ".desktop");
+    if (toks[0] === "filetype") {
+      if (toks[1] === "uninstall") { outOk("file type removed: application/x-vroot-image"); return; }
+      if (toks[1] === "status") {
+        outLn("vroot file type");
+        outLn("  type:     application/x-vroot-image");
+        outLn("  globs:    *.vroot  *.sqfs");
+        outLn("  mime:     ~/.local/share/mime/packages/vroot.xml [present]");
+        outLn("  handler:  ~/.local/share/applications/vroot-image.desktop [present]");
+        outLn("  detected: application/x-vroot-image");
+        return;
+      }
+      outOk("file type installed: application/x-vroot-image (*.vroot, *.sqfs)");
+      outOk("handler: ~/.local/share/applications/vroot-image.desktop");
       return;
     }
-    if (toks[0] === "version") { outLn("vroot 2.0.0"); return; }
+    if (toks[0] === "version") { outLn("vroot 2.1.0"); return; }
 
     /* parse flags + name + -- command */
     var flags = [], name = null, cmdTokens = null, offline = S.offline, binds = [];
@@ -581,7 +593,7 @@
   });
 
   /* intro */
-  outMut("vroot 2.0.0 — interactive demo (simulated; runs entirely in your browser)");
+  outMut("vroot 2.1.0 — interactive demo (simulated; runs entirely in your browser)");
   outMut("");
   outLn("A root shell in a sandbox, built from a flag. Millisecond boot.");
   outLn("");
