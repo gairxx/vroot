@@ -42,7 +42,7 @@ vroot -mytool
 | --- | --- | --- |
 | `name` | yes | canonical name (usually the file name) |
 | `provides` | no | comma-separated extra flags/aliases for this recipe |
-| `base` | no | `alpine` (default) or `debian` |
+| `base` | no | `alpine` (default) or `debian` (Debian needs Docker, so it is unavailable on Android/Termux — see [ANDROID.md](ANDROID.md)) |
 | `packages` | no | space-separated package names to install (may repeat) |
 | `setup` | no | shell snippet run during the build (may repeat) |
 | `env` | no | comma-separated `KEY=VALUE` exported in the sandbox |

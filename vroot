@@ -3,10 +3,26 @@ set -euo pipefail
 umask 077
 
 VERSION="2.1.0"
+
+# --- platform detection (fork-free; set VROOT_PLATFORM to override for tests) --
+if [[ -n "${VROOT_PLATFORM:-}" ]]; then
+    PLATFORM="$VROOT_PLATFORM"
+elif [[ -n "${TERMUX_VERSION:-}" || "${PREFIX:-}" == *com.termux* || -e /system/build.prop ]]; then
+    PLATFORM="android"
+else
+    PLATFORM="linux"
+fi
+IS_ANDROID=0; [[ "$PLATFORM" == android ]] && IS_ANDROID=1
+
 SELF="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || readlink -f "$0")"
 ROOTDIR="$(cd "$(dirname "$SELF")" && pwd)"
 
-VROOT_HOME="${VROOT_HOME:-$HOME/.local/share/vroot}"
+# On Android/Termux keep all state inside the app-private data dir so it obeys
+# Android storage isolation and SELinux (never /sdcard, /data/local/tmp, etc.).
+if [[ -z "${VROOT_HOME:-}" ]]; then
+    if [[ "$IS_ANDROID" == 1 && -n "${PREFIX:-}" ]]; then VROOT_HOME="$PREFIX/var/lib/vroot"
+    else VROOT_HOME="$HOME/.local/share/vroot"; fi
+fi
 VROOT_CONFIG="${VROOT_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/vroot}"
 ENVS_DIR="$VROOT_HOME/envs"
 CACHE_DIR="$VROOT_HOME/cache"
@@ -17,12 +33,26 @@ BUILTIN_RECIPES="$ROOTDIR/recipes"
 USER_RECIPES="$VROOT_CONFIG/recipes"
 
 ALPINE_VER="3.20.3"
-ALPINE_URL="https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64/alpine-minirootfs-${ALPINE_VER}-x86_64.tar.gz"
-ALPINE_SHA256="d4e6fd67dcf75e40c451560ac7265166c2b72a0f38ddc9aae756a7de3d1efa0c"
+ALPINE_REL="v${ALPINE_VER%.*}"
+ALPINE_CDN="https://dl-cdn.alpinelinux.org/alpine"
+# Pinned rootfs checksums for the common arches; others verify against the
+# CDN-published .sha256 file.
+ALPINE_SHA256_X86_64="d4e6fd67dcf75e40c451560ac7265166c2b72a0f38ddc9aae756a7de3d1efa0c"
+ALPINE_SHA256_AARCH64="041fa34a81788242df9e78fa69b97ab45b8ec47ddbf88864755610414a7bf3de"
 DEBIAN_IMG="debian:bookworm-slim"
 
 IMG_EXT="vroot"
 MIME_TYPE="application/x-vroot-image"
+
+# --- engine selection (auto-detected on Android; see overlay_engine) ----------
+OVERLAY_ENGINE="${VROOT_OVERLAY:-}"
+PRIV_BRIDGE="${VROOT_PRIV_BRIDGE:-}"
+BWRAP_BIN="${VROOT_BWRAP:-bwrap}"
+FUSE_OVERLAYFS_BIN="${VROOT_FUSE_OVERLAYFS:-fuse-overlayfs}"
+CAPS_FILE="$VROOT_HOME/.caps"
+# Linux always uses native overlayfs: pin it at load so the hot path never
+# probes or reads a cache file (keeps startup fork-free).
+[[ "$IS_ANDROID" == 0 && -z "$OVERLAY_ENGINE" ]] && OVERLAY_ENGINE="native"
 
 RESERVED=" build ls list rm delete save load filetype recipe recipes envs images prune info help version doctor "
 
@@ -32,6 +62,199 @@ ok()   { printf '%s  ok%s %s\n' "$CG" "$C0" "$*" >&2; }
 warn() { printf '%swarn%s %s\n' "$CY" "$C0" "$*" >&2; }
 die()  { printf '%serr %s %s\n' "$CR" "$C0" "$*" >&2; exit 1; }
 need_cmd() { command -v "$1" >/dev/null 2>&1; }
+is_android() { [[ "$IS_ANDROID" == 1 ]]; }
+
+# --- host arch / alpine rootfs helpers ---------------------------------------
+alpine_arch() {
+    [[ -n "${VROOT_ALPINE_ARCH:-}" ]] && { printf '%s' "$VROOT_ALPINE_ARCH"; return 0; }
+    case "$(uname -m 2>/dev/null || echo unknown)" in
+        x86_64|amd64)        printf 'x86_64' ;;
+        aarch64|arm64)       printf 'aarch64' ;;
+        armv7l|armv7)        printf 'armv7' ;;
+        armv6l|armv6)        printf 'armv6' ;;
+        i386|i486|i586|i686) printf 'x86' ;;
+        ppc64le)             printf 'ppc64le' ;;
+        s390x)               printf 's390x' ;;
+        riscv64)             printf 'riscv64' ;;
+        *)                   printf 'x86_64' ;;
+    esac
+}
+alpine_url() { printf '%s/%s/releases/%s/alpine-minirootfs-%s-%s.tar.gz' "$ALPINE_CDN" "$ALPINE_REL" "$1" "$ALPINE_VER" "$1"; }
+
+# --- capability probes --------------------------------------------------------
+# Can we create an unprivileged user namespace? (required by bubblewrap)
+probe_userns() { unshare --user --map-root-user true 2>/dev/null; }
+
+# Can we mount overlayfs inside an unprivileged user namespace?
+probe_native_overlay() {
+    local d rc=1
+    d="$(mktemp -d "$TMP_DIR/ovl.XXXXXX" 2>/dev/null)" || return 1
+    mkdir -p "$d/lower" "$d/upper" "$d/work" "$d/merged" 2>/dev/null || { rm -rf "$d"; return 1; }
+    if unshare --user --map-root-user --mount -- /bin/sh -c '
+            mount -t overlay overlay -o "lowerdir='"$d"'/lower,upperdir='"$d"'/upper,workdir='"$d"'/work" "'"$d"'/merged" 2>/dev/null || exit 1
+            umount "'"$d"'/merged" 2>/dev/null
+        ' 2>/dev/null; then rc=0; fi
+    rm -rf "$d" 2>/dev/null || true
+    return $rc
+}
+
+# fuse-overlayfs fallback: needs the binary and a usable /dev/fuse.
+probe_fuse() {
+    need_cmd "$FUSE_OVERLAYFS_BIN" || return 1
+    [[ -r /dev/fuse && -w /dev/fuse ]] || return 1
+    return 0
+}
+
+probe_tmpfs() {
+    local t
+    t="$(stat -f -c %T "$TMP_DIR" 2>/dev/null || true)"
+    [[ "$t" == tmpfs ]]
+}
+
+# Privileged execution bridges (for locked-down OEM kernels with no userns).
+detect_priv_bridge() {
+    [[ -n "$PRIV_BRIDGE" ]] && return 0
+    if need_cmd su;       then PRIV_BRIDGE="su";       return 0; fi
+    if need_cmd ksu;      then PRIV_BRIDGE="ksu";      return 0; fi
+    if need_cmd rish;     then PRIV_BRIDGE="shizuku";  return 0; fi
+    return 1
+}
+
+# Decide how to build the writable root layer. On Linux we trust native; on
+# Android we probe, cheapest first: native overlay -> fuse-overlayfs -> root.
+detect_engine() {
+    if ! is_android; then OVERLAY_ENGINE="native"; return 0; fi
+    if probe_userns; then
+        if probe_native_overlay; then OVERLAY_ENGINE="native"
+        elif probe_fuse;        then OVERLAY_ENGINE="fuse"
+        else                         OVERLAY_ENGINE="none"; fi
+    elif detect_priv_bridge; then
+        OVERLAY_ENGINE="priv"
+    else
+        OVERLAY_ENGINE="none"
+    fi
+    return 0
+}
+
+# Resolve the engine in-process (no forks beyond the probes themselves). The
+# result is memoized in $OVERLAY_ENGINE and cached in $CAPS_FILE so later runs
+# do not probe. `vroot doctor --probe` refreshes the cache.
+resolve_engine() {
+    [[ -n "$OVERLAY_ENGINE" && "$OVERLAY_ENGINE" != none ]] && return 0
+    if [[ -z "$OVERLAY_ENGINE" && -f "$CAPS_FILE" ]]; then
+        local k v
+        while IFS='=' read -r k v; do
+            [[ "$k" == engine ]] && OVERLAY_ENGINE="$v"
+            [[ "$k" == bridge && -z "$PRIV_BRIDGE" ]] && PRIV_BRIDGE="$v"
+        done < "$CAPS_FILE"
+    fi
+    [[ -n "$OVERLAY_ENGINE" && "$OVERLAY_ENGINE" != none ]] && return 0
+    detect_engine
+    write_caps
+    return 0
+}
+
+# Print the engine (used by doctor / diagnostics).
+overlay_engine() { resolve_engine; printf '%s' "$OVERLAY_ENGINE"; }
+
+write_caps() {
+    mkdir -p "$VROOT_HOME" 2>/dev/null || true
+    { printf 'engine=%s\n' "${OVERLAY_ENGINE:-}"; printf 'bridge=%s\n' "${PRIV_BRIDGE:-}"; } > "$CAPS_FILE" 2>/dev/null || true
+}
+
+fetch() { # URL DEST
+    if need_cmd curl; then curl -fLsS -o "$2" "$1"
+    elif need_cmd wget; then wget -qO "$2" "$1"
+    else die "need curl or wget to download"; fi
+}
+fetch_sha256() { # ARTIFACT_URL -> prints expected sha256, or nothing
+    local out; out="$(mktemp "$TMP_DIR/.sum.XXXXXX" 2>/dev/null)" || return 0
+    if fetch "$1.sha256" "$out" 2>/dev/null; then cut -d' ' -f1 "$out" | head -1; fi
+    rm -f "$out"
+}
+
+# --- root execution bridges ---------------------------------------------------
+# Run a script file as root via whatever privileged bridge is available.
+bridge_run() { # SCRIPT_FILE
+    case "${PRIV_BRIDGE:-}" in
+        su)      su -c "$1" ;;
+        ksu)     ksu -c "$1" ;;
+        shizuku) rish -c "$1" ;;
+        *)       return 127 ;;
+    esac
+}
+
+run_privileged() { # execute "$@" as root through the privileged bridge
+    local tf; tf="$(mktemp "$TMP_DIR/priv.XXXXXX.sh")" || die "mktemp failed"
+    { printf '#!/bin/sh\nset -e\nexec'; printf ' %q' "$@"; printf '\n'; } > "$tf"
+    chmod 0755 "$tf"
+    local rc=0
+    bridge_run "$tf" || rc=$?
+    rm -f "$tf"
+    [[ $rc == 127 ]] && die "no privileged bridge available (install/allow su, ksu, or Shizuku)"
+    return $rc
+}
+
+# --- sandbox root-layer engines ----------------------------------------------
+# Each takes the bubblewrap option list (ending in `-- cmd...`) and starts the
+# sandbox with the merged root bind-mounted at /.
+
+spawn_native() {
+    export VROOT_LOWER VROOT_UPPER VROOT_WORK VROOT_MERGED VROOT_RAM
+    local -a b=( "$BWRAP_BIN" --unshare-user --uid 0 --gid 0 --cap-add ALL "$@" )
+    unshare --user --map-root-user --mount -- /bin/sh -c '
+        if [ -n "$VROOT_RAM" ]; then mount -t tmpfs none "$VROOT_RAM" || exit 70; fi
+        mkdir -p "$VROOT_UPPER" "$VROOT_WORK" "$VROOT_MERGED" || exit 70
+        mount -t overlay overlay -o "lowerdir=$VROOT_LOWER,upperdir=$VROOT_UPPER,workdir=$VROOT_WORK" "$VROOT_MERGED" || exit 70
+        exec "$@"
+    ' sh "${b[@]}"
+}
+
+spawn_fuse() {
+    export VROOT_LOWER VROOT_UPPER VROOT_WORK VROOT_MERGED VROOT_RAM VROOT_FUSE="$FUSE_OVERLAYFS_BIN"
+    local -a b=( "$BWRAP_BIN" --unshare-user --uid 0 --gid 0 --cap-add ALL "$@" )
+    unshare --user --map-root-user --mount -- /bin/sh -c '
+        if [ -n "$VROOT_RAM" ]; then mount -t tmpfs none "$VROOT_RAM" || exit 70; fi
+        mkdir -p "$VROOT_UPPER" "$VROOT_WORK" "$VROOT_MERGED" || exit 70
+        "$VROOT_FUSE" -o "lowerdir=$VROOT_LOWER,upperdir=$VROOT_UPPER,workdir=$VROOT_WORK" "$VROOT_MERGED" &
+        fp=$!
+        n=0; while [ $n -lt 250 ]; do grep -qs " $VROOT_MERGED " /proc/mounts && break; n=$((n+1)); sleep 0.02; done
+        "$@"; rc=$?
+        fusermount -u "$VROOT_MERGED" 2>/dev/null || fusermount3 -u "$VROOT_MERGED" 2>/dev/null || true
+        wait $fp 2>/dev/null
+        exit $rc
+    ' sh "${b[@]}"
+}
+
+spawn_priv() {
+    export VROOT_LOWER VROOT_UPPER VROOT_WORK VROOT_MERGED VROOT_RAM
+    local tf; tf="$(mktemp "$TMP_DIR/priv.XXXXXX.sh")" || die "mktemp failed"
+    {
+        printf '#!/bin/sh\nset -e\n'
+        printf 'export VROOT_LOWER=%q VROOT_UPPER=%q VROOT_WORK=%q VROOT_MERGED=%q VROOT_RAM=%q\n' \
+            "$VROOT_LOWER" "$VROOT_UPPER" "$VROOT_WORK" "$VROOT_MERGED" "$VROOT_RAM"
+        printf 'if [ -n "$VROOT_RAM" ]; then mount -t tmpfs none "$VROOT_RAM" || exit 70; fi\n'
+        printf 'mkdir -p "$VROOT_UPPER" "$VROOT_WORK" "$VROOT_MERGED"\n'
+        printf 'mount -t overlay overlay -o "lowerdir=$VROOT_LOWER,upperdir=$VROOT_UPPER,workdir=$VROOT_WORK" "$VROOT_MERGED" || exit 70\n'
+        printf 'exec'; printf ' %q' "$BWRAP_BIN" "$@"; printf '\n'
+    } > "$tf"
+    chmod 0755 "$tf"
+    local rc=0
+    bridge_run "$tf" || rc=$?
+    rm -f "$tf"
+    [[ $rc == 127 ]] && die "no privileged bridge available (install/allow su, ksu, or Shizuku)"
+    return $rc
+}
+
+spawn_sandbox() {
+    resolve_engine
+    case "$OVERLAY_ENGINE" in
+        native) spawn_native "$@" ;;
+        fuse)   spawn_fuse "$@" ;;
+        priv)   spawn_priv "$@" ;;
+        *)      die "no usable sandbox engine on this system; run: vroot doctor --probe" ;;
+    esac
+}
 
 ensure_dirs() {
     [[ -d "$ENVS_DIR" && -d "$CACHE_DIR" && -d "$BASES_DIR" && -d "$INST_DIR" && -d "$TMP_DIR" ]] && return 0
@@ -130,17 +353,27 @@ ensure_base() {
     rm -rf "$dest"; mkdir -p "$dest"
     case "$base" in
         alpine)
-            log "fetching Alpine $ALPINE_VER base rootfs ..."
+            local arch url want
+            arch="$(alpine_arch)"; url="$(alpine_url "$arch")"
+            log "fetching Alpine $ALPINE_VER ($arch) base rootfs ..."
             local tb; tb="$(mktemp "$TMP_DIR/.alpine.XXXXXX.tar.gz")"
-            if need_cmd curl; then curl -fLsS -o "$tb" "$ALPINE_URL" || { rm -f "$tb"; die "download failed"; }
-            else wget -qO "$tb" "$ALPINE_URL" || { rm -f "$tb"; die "download failed"; }; fi
-            local got; got="$(sha256sum "$tb" | cut -d' ' -f1)"
-            [[ "$got" == "$ALPINE_SHA256" ]] || { rm -f "$tb"; die "base rootfs checksum mismatch (expected $ALPINE_SHA256, got $got)"; }
+            fetch "$url" "$tb" || { rm -f "$tb"; die "download failed"; }
+            case "$arch" in
+                x86_64)  want="$ALPINE_SHA256_X86_64" ;;
+                aarch64) want="$ALPINE_SHA256_AARCH64" ;;
+                *)       want="$(fetch_sha256 "$url")" ;;
+            esac
+            if [[ -n "$want" ]]; then
+                local got; got="$(sha256sum "$tb" | cut -d' ' -f1)"
+                [[ "$got" == "$want" ]] || { rm -f "$tb"; die "base rootfs checksum mismatch (expected $want, got $got)"; }
+            else
+                warn "no published checksum for alpine/$arch; skipping verification"
+            fi
             tar -xzf "$tb" -C "$dest" || { rm -f "$tb"; die "extract failed"; }
             rm -f "$tb"
             ;;
         debian)
-            need_cmd docker || die "docker is required for the Debian base (apt install docker.io)"
+            need_cmd docker || die "the Debian base needs docker (unavailable on Android/Termux); use an Alpine-based recipe"
             log "fetching Debian base ('$DEBIAN_IMG') via docker ..."
             local cid
             cid="$(docker create "$DEBIAN_IMG")" || die "docker create failed"
@@ -154,13 +387,20 @@ ensure_base() {
 
 run_in_root() {
     local dir="$1" script="$2"
-    bwrap --unshare-user --uid 0 --gid 0 --cap-add ALL \
-        --unshare-pid --unshare-uts --unshare-ipc --unshare-cgroup-try \
-        --die-with-parent \
-        --bind "$dir" / --proc /proc --dev /dev --tmpfs /tmp --tmpfs /run \
-        --ro-bind-try /sys /sys --hostname builder \
-        --setenv PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-        -- /bin/sh -c "$script"
+    resolve_engine
+    local -a b=()
+    [[ "$OVERLAY_ENGINE" != priv ]] && b+=(--unshare-user --uid 0 --gid 0 --cap-add ALL)
+    b+=(--unshare-pid --unshare-uts --unshare-ipc --unshare-cgroup-try
+        --die-with-parent
+        --bind "$dir" / --proc /proc --dev /dev --tmpfs /tmp --tmpfs /run
+        --ro-bind-try /sys /sys --hostname builder
+        --setenv PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        -- /bin/sh -c "$script")
+    if [[ "$OVERLAY_ENGINE" == priv ]]; then
+        run_privileged "$BWRAP_BIN" "${b[@]}"
+    else
+        "$BWRAP_BIN" "${b[@]}"
+    fi
 }
 
 build_env() {
@@ -339,8 +579,7 @@ launch() {
     local host="${O_HOSTNAME:-${name:-vroot}}"
     local cwd="${O_CWD:-/root}"
 
-    local -a bargs=( bwrap --unshare-user --uid 0 --gid 0 --cap-add ALL
-        --unshare-pid --unshare-uts --unshare-ipc --unshare-cgroup-try
+    local -a bargs=( --unshare-pid --unshare-uts --unshare-ipc --unshare-cgroup-try
         --die-with-parent
         --bind "$merged" / --proc /proc --dev /dev --tmpfs /tmp --tmpfs /run
         --ro-bind-try /sys /sys --hostname "$host" --chdir "$cwd" )
@@ -373,12 +612,7 @@ launch() {
     bargs+=(-- "${cmd[@]}")
 
     export VROOT_LOWER="$cache" VROOT_UPPER="$upper" VROOT_WORK="$work" VROOT_MERGED="$merged" VROOT_RAM="$ram"
-    unshare --user --map-root-user --mount -- /bin/sh -c '
-        if [ -n "$VROOT_RAM" ]; then mount -t tmpfs none "$VROOT_RAM" || exit 70; fi
-        mkdir -p "$VROOT_UPPER" "$VROOT_WORK" "$VROOT_MERGED" || exit 70
-        mount -t overlay overlay -o "lowerdir=$VROOT_LOWER,upperdir=$VROOT_UPPER,workdir=$VROOT_WORK" "$VROOT_MERGED" || exit 70
-        exec "$@"
-    ' sh "${bargs[@]}"
+    spawn_sandbox "${bargs[@]}"
     local rc=$?
     [[ -n "$ram" ]] && rm -rf "$base"
     [[ "$O_RM" == 1 && -n "$name" ]] && rm_instance "$name"
@@ -471,6 +705,7 @@ cmd_envs() {
     [[ $found == 1 ]] || printf '  %s(no env images yet - try: vroot -python)%s\n' "$CD" "$C0"
     printf '\n%sbase rootfs cache:%s\n' "$CD" "$C0"
     for f in "$BASES_DIR"/*; do [[ -d "$f" ]] && printf '  %-10s %s\n' "$(basename "$f")" "$(fsize "$f")"; done
+    return 0
 }
 
 cmd_prune() {
@@ -625,24 +860,99 @@ EOF
     esac
 }
 
+pkg_hint() {
+    if is_android; then printf 'pkg install %s' "$1"; else printf 'apt install %s' "$1"; fi
+}
+
 cmd_doctor() {
+    local mode="${1:-}"
+    if [[ "$mode" == --probe ]]; then
+        [[ -z "${VROOT_OVERLAY:-}" ]] && OVERLAY_ENGINE=""
+        PRIV_BRIDGE="${VROOT_PRIV_BRIDGE:-}"
+        rm -f "$CAPS_FILE"
+    fi
     printf '%svroot %s%s\n\n' "$CB" "$VERSION" "$C0"
-    need_cmd bwrap     && ok "bwrap: $(bwrap --version)"      || die "bubblewrap missing (apt install bubblewrap)"
-    need_cmd unshare   && ok "unshare: present"               || die "util-linux unshare missing"
-    need_cmd mksquashfs && ok "mksquashfs: present"           || die "squashfs-tools missing (apt install squashfs-tools)"
+    printf 'platform: %s%s%s   arch: %s\n\n' "$CB" "$PLATFORM" "$C0" "$(alpine_arch)"
+
+    need_cmd "$BWRAP_BIN" && ok "bwrap: $("$BWRAP_BIN" --version 2>/dev/null || echo present)" || die "bubblewrap missing ($(pkg_hint bubblewrap))"
+    need_cmd unshare    && ok "unshare: present"              || die "util-linux unshare missing"
+    need_cmd mksquashfs && ok "mksquashfs: present"           || die "squashfs-tools missing ($(pkg_hint squashfs-tools))"
     need_cmd unsquashfs && ok "unsquashfs: present"           || die "squashfs-tools missing"
-    need_cmd busybox   && ok "busybox: present"               || warn "busybox missing (only needed for the tiny base)"
-    need_cmd docker    && ok "docker: $(docker --version | cut -d, -f1)" || warn "docker missing (only needed for the Debian base)"
-    printf '\n'
-    local out
-    out="$(unshare --user --map-root-user --mount -- sh -c '
-        d=$(mktemp -d); mkdir -p "$d/u" "$d/w" "$d/m" "$d/l"
-        mount -t overlay overlay -o "lowerdir=$d/l,upperdir=$d/u,workdir=$d/w" "$d/m" 2>/dev/null && echo yes || echo no
-        umount "$d/m" 2>/dev/null || true
-        rm -rf "$d"' 2>/dev/null || true)"
-    [[ "$out" == yes ]] && ok "unprivileged overlayfs: supported (copy-on-write sandboxes)" || warn "overlayfs not available in userns"
+
+    if is_android; then
+        probe_userns && ok "user namespaces: enabled" || warn "user namespaces: DISABLED (kernel/ROM restriction)"
+        [[ -e /dev/fuse ]] && ok "/dev/fuse: present" || warn "/dev/fuse: missing (fuse-overlayfs unavailable)"
+        need_cmd "$FUSE_OVERLAYFS_BIN" && ok "fuse-overlayfs: present" || warn "fuse-overlayfs: missing"
+        probe_tmpfs && ok "tmpfs: available" || warn "tmpfs: not detected"
+        if detect_priv_bridge; then ok "privileged bridge: $PRIV_BRIDGE"; else warn "privileged bridge: none (su / ksu / Shizuku)"; fi
+        printf '\n'
+        local eng; eng="$(overlay_engine)"
+        case "$eng" in
+            native) ok "engine: native overlayfs (fastest)" ;;
+            fuse)   ok "engine: fuse-overlayfs (userspace fallback)" ;;
+            priv)   ok "engine: privileged root bridge (${PRIV_BRIDGE})" ;;
+            *)      warn "engine: none - sandboxes cannot start; see docs/ANDROID.md" ;;
+        esac
+    else
+        need_cmd busybox && ok "busybox: present" || warn "busybox missing (only for the tiny base)"
+        need_cmd docker  && ok "docker: $(docker --version | cut -d, -f1)" || warn "docker missing (only for the Debian base)"
+        local out
+        out="$(unshare --user --map-root-user --mount -- sh -c '
+            d=$(mktemp -d); mkdir -p "$d/u" "$d/w" "$d/m" "$d/l"
+            mount -t overlay overlay -o "lowerdir=$d/l,upperdir=$d/u,workdir=$d/w" "$d/m" 2>/dev/null && echo yes || echo no
+            umount "$d/m" 2>/dev/null || true
+            rm -rf "$d"' 2>/dev/null || true)"
+        [[ "$out" == yes ]] && ok "unprivileged overlayfs: supported (copy-on-write sandboxes)" || warn "overlayfs not available in userns"
+    fi
+
     printf '\n'
     cmd_envs
+
+    case "$mode" in
+        --probe) resolve_engine; write_caps; ok "capabilities cached (engine=$OVERLAY_ENGINE)" ;;
+        --test-android|--test) printf '\n'; test_android ;;
+    esac
+}
+
+test_android() {
+    printf '%sAndroid self-test%s\n\n' "$CB" "$C0"
+    local fails=0 out rc eng
+    OVERLAY_ENGINE=""; eng="$(overlay_engine)"
+    if [[ "$eng" == none ]]; then
+        printf '  %sFAIL%s no usable sandbox engine (see doctor above)\n' "$CR" "$C0"
+        return 1
+    fi
+    printf '  %s ok %s engine selected: %s\n' "$CG" "$C0" "$eng"
+
+    [[ -d "$BASES_DIR/alpine" ]] || printf '  %s .. %s building Alpine base (needs network)\n' "$CD" "$C0"
+
+    out="$("$SELF" -base -offline -- sh -c 'printf "uid=%s arch=%s ok=1\n" "$(id -u)" "$(uname -m)"' 2>&1)"; rc=$?
+    if [[ $rc == 0 && "$out" == *uid=0* && "$out" == *ok=1* ]]; then
+        printf '  %s ok %s root shell: %s\n' "$CG" "$C0" "$(printf '%s' "$out" | tr '\n' ' ')"
+    else
+        printf '  %sFAIL%s root shell: rc=%s out=%s\n' "$CR" "$C0" "$rc" "$out"; fails=$((fails+1))
+    fi
+
+    out="$("$SELF" -base -offline -- sh -c 'echo hi > /root/.vroot-wtest && cat /root/.vroot-wtest' 2>&1)"; rc=$?
+    if [[ $rc == 0 && "$out" == *hi* ]]; then
+        printf '  %s ok %s writable overlay\n' "$CG" "$C0"
+    else
+        printf '  %sFAIL%s writable overlay: rc=%s out=%s\n' "$CR" "$C0" "$rc" "$out"; fails=$((fails+1))
+    fi
+
+    "$SELF" rm vrselftest >/dev/null 2>&1 || true
+    "$SELF" -base -offline vrselftest -- sh -c 'echo persisted > /root/marker' >/dev/null 2>&1
+    out="$("$SELF" -base -offline vrselftest -- sh -c 'cat /root/marker' 2>&1)"; rc=$?
+    if [[ $rc == 0 && "$out" == *persisted* ]]; then
+        printf '  %s ok %s persistence across sessions\n' "$CG" "$C0"
+    else
+        printf '  %sFAIL%s persistence: rc=%s out=%s\n' "$CR" "$C0" "$rc" "$out"; fails=$((fails+1))
+    fi
+    "$SELF" rm vrselftest >/dev/null 2>&1 || true
+
+    printf '\n'
+    if [[ $fails == 0 ]]; then ok "self-test passed"; else warn "self-test: $fails check(s) failed"; fi
+    return "$fails"
 }
 
 cmd_banner() {
@@ -726,12 +1036,16 @@ MANAGEMENT
   vroot prune                  clear caches/tmp
   vroot info NAME              sandbox details
   vroot doctor                 check the host setup
+  vroot doctor --probe         re-detect and cache sandbox capabilities
+  vroot doctor --test-android  run the Android/Termux self-test
 
 HOW IT WORKS
   - flags pick recipes -> a single-file env image (envs/*.sqfs) is built once
   - each session runs it via bubblewrap with full root capabilities, its own
     namespaces and its own filesystem; your host is not visible by default
-  - see docs/BUILDING.md to add your own language/tool
+  - on Linux the writable layer is a native overlayfs; on Android it falls back
+    to fuse-overlayfs or a privileged root bridge when user namespaces are off
+  - see docs/BUILDING.md to add your own language/tool, docs/ANDROID.md for Termux
 EOF
 }
 
@@ -750,7 +1064,7 @@ main() {
         envs|images) cmd_envs ;;
         prune|gc)    cmd_prune ;;
         info)        shift; cmd_info "$@" ;;
-        doctor)      cmd_doctor ;;
+        doctor)      shift; cmd_doctor "${1:-}" ;;
         help|-h|--help) cmd_help ;;
         version|-V|--version) printf 'vroot %s\n' "$VERSION" ;;
         *)           cmd_run "$@" ;;

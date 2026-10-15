@@ -3,7 +3,7 @@
 **Instant, isolated, single-file Linux development environments that boot in milliseconds — built from a flag.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform: Linux](https://img.shields.io/badge/platform-Linux-1793d1.svg)](#requirements)
+[![Platform: Linux & Android](https://img.shields.io/badge/platform-Linux%20%7C%20Android-1793d1.svg)](#requirements)
 [![No daemon](https://img.shields.io/badge/daemon-none-success.svg)](#how-it-works)
 [![Root without sudo](https://img.shields.io/badge/root-no%20sudo-success.svg)](#how-it-works)
 [![Shell: bash](https://img.shields.io/badge/shell-bash-4EAA25.svg)](#requirements)
@@ -88,6 +88,10 @@ tool installed** — without images to build, a daemon to run, or a slow boot.
 - `curl` or `wget` — only for the first build (to fetch the base rootfs).
 - `docker` — only if you use a flag whose recipe targets the Debian base
   (`bun`, `clojure`, `groovy`, `julia`, `kotlin`, `scala`, `swift`).
+- **Android / Termux** is supported too — see [docs/ANDROID.md](docs/ANDROID.md).
+  Run `sh scripts/install-termux.sh`, then `vroot doctor`; on locked-down ROMs
+  vroot transparently falls back to `fuse-overlayfs` or a root bridge
+  (`su`/`ksu`/Shizuku).
 
 ### Debian / Ubuntu
 
@@ -280,6 +284,7 @@ See [docs/BUILDING.md](docs/BUILDING.md) for worked examples, and
 - [docs/BUILDING.md](docs/BUILDING.md) — add your own language/tool
 - [docs/LANGUAGES.md](docs/LANGUAGES.md) — full flag catalog
 - [docs/RECIPES.md](docs/RECIPES.md) — recipe field reference
+- [docs/ANDROID.md](docs/ANDROID.md) — run vroot on Android/Termux
 - [examples/](examples/) — example recipes
 
 ## FAQ
@@ -302,9 +307,9 @@ is not visible. It is real root in an isolated namespace, not root on your host.
 Yes, explicitly, with `-v ~/src:/src`. Nothing is shared until you ask.
 
 **Where are environments stored?**
-Under `~/.local/share/vroot/` (`envs/`, `cache/`, `instances/`). Override with
-`$VROOT_HOME`. Recipes are read from `~/.config/vroot/recipes/` (override with
-`$VROOT_CONFIG`).
+Under `~/.local/share/vroot/` (`envs/`, `cache/`, `instances/`); on Termux this
+is `$PREFIX/var/lib/vroot/`. Override with `$VROOT_HOME`. Recipes are read from
+`~/.config/vroot/recipes/` (override with `$VROOT_CONFIG`).
 
 **How do I make a portable environment?**
 `vroot save NAME out.vroot` writes a single image file; boot it with
@@ -323,7 +328,9 @@ Alpine images are tiny and build in seconds. Recipes that need glibc or
 `apt`-only packages opt into a Debian base automatically.
 
 **Does it work without systemd / in a container / under WSL?**
-It needs unprivileged user namespaces. Run `vroot doctor` to check.
+It needs unprivileged user namespaces. Run `vroot doctor` to check. On Android,
+where user namespaces are often disabled, vroot falls back to `fuse-overlayfs`
+or a privileged root bridge — see [docs/ANDROID.md](docs/ANDROID.md).
 
 ## Keywords
 
