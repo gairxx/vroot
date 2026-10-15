@@ -30,6 +30,11 @@ CASES = [
         "vroot": [VROOT, "-python", "-sqlite", "-git", "--", "true"],
         "docker": ["docker", "run", "--rm", "python:3.12-alpine", "true"],
     },
+    {
+        "name": "kali (rolling)",
+        "vroot": [VROOT, "-kali", "--", "true"],
+        "docker": ["docker", "run", "--rm", "kalilinux/kali-rolling", "true"],
+    },
 ]
 
 

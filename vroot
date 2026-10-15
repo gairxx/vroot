@@ -20,6 +20,7 @@ ALPINE_VER="3.20.3"
 ALPINE_URL="https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64/alpine-minirootfs-${ALPINE_VER}-x86_64.tar.gz"
 ALPINE_SHA256="d4e6fd67dcf75e40c451560ac7265166c2b72a0f38ddc9aae756a7de3d1efa0c"
 DEBIAN_IMG="debian:bookworm-slim"
+KALI_IMG="kalilinux/kali-rolling"
 
 IMG_EXT="vroot"
 MIME_TYPE="application/x-vroot-image"
@@ -139,15 +140,16 @@ ensure_base() {
             tar -xzf "$tb" -C "$dest" || { rm -f "$tb"; die "extract failed"; }
             rm -f "$tb"
             ;;
-        debian)
-            need_cmd docker || die "docker is required for the Debian base (apt install docker.io)"
-            log "fetching Debian base ('$DEBIAN_IMG') via docker ..."
+        debian|kali)
+            need_cmd docker || die "docker is required for the ${base^} base (apt install docker.io)"
+            local img="$DEBIAN_IMG"; [[ "$base" == kali ]] && img="$KALI_IMG"
+            log "fetching ${base^} base ('$img') via docker ..."
             local cid
-            cid="$(docker create "$DEBIAN_IMG")" || die "docker create failed"
+            cid="$(docker create "$img")" || die "docker create failed (image '$img' missing? try: docker pull $img)"
             docker export "$cid" | tar -x -C "$dest" || { docker rm -f "$cid" >/dev/null 2>&1; die "export failed"; }
             docker rm "$cid" >/dev/null 2>&1 || true
             ;;
-        *) die "unknown base '$base' (use alpine or debian)" ;;
+        *) die "unknown base '$base' (use alpine, debian or kali)" ;;
     esac
     : > "$marker"
 }
@@ -184,7 +186,7 @@ build_env() {
     for f in "${rfiles[@]}"; do
         parse_recipe "$f"
         names+=("$R_NAME")
-        [[ "$R_BASE" == debian ]] && base="debian"
+        [[ "$R_BASE" == debian || "$R_BASE" == kali ]] && base="$R_BASE"
     done
 
     local slug; local IFS='+'; slug="${names[*]}"; unset IFS
@@ -228,6 +230,15 @@ build_env() {
             printf 'deb http://deb.debian.org/debian bookworm main\ndeb http://deb.debian.org/debian bookworm-updates main\n' \
                 > "$tmp/etc/apt/sources.list"
             ;;
+        kali)
+            : # image ships /etc/apt/sources.list.d/kali.sources (signed deb822); don't duplicate it
+            ;;
+    esac
+    case "$base" in
+        debian|kali)
+            mkdir -p "$tmp/etc/apt/apt.conf.d"
+            printf 'APT::Sandbox::User "root";\n' > "$tmp/etc/apt/apt.conf.d/99vroot-sandbox"
+            ;;
     esac
 
     {
@@ -246,7 +257,7 @@ build_env() {
     if [[ -n "$packages" ]]; then
         case "$base" in
             alpine) script+="apk update"$'\n'"apk add --no-cache $packages"$'\n' ;;
-            debian) script+="export DEBIAN_FRONTEND=noninteractive"$'\n'"apt-get update"$'\n'"apt-get install -y --no-install-recommends $packages"$'\n' ;;
+            debian|kali) script+="export DEBIAN_FRONTEND=noninteractive"$'\n'"apt-get update"$'\n'"apt-get install -y --no-install-recommends $packages"$'\n' ;;
         esac
     fi
     [[ -n "$setup" ]]  && script+="$setup"

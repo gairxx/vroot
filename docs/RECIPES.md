@@ -46,11 +46,13 @@ Which base root filesystem to build on.
 - `alpine` — tiny, fast, `apk`; uses musl.
 - `debian` — larger, fetched via `docker`; glibc, `apt`; use when a tool is not
   available on Alpine or needs glibc.
+- `kali` — Debian-based, fetched via `docker` (`kali-rolling`); glibc, `apt`
+  with the Kali repositories; for security tooling.
 
 ### `packages` (optional, repeatable)
 
 Space-separated package names installed with `apk add` (Alpine) or
-`apt-get install` (Debian). You may repeat the key to keep lines short:
+`apt-get install` (Debian/Kali). You may repeat the key to keep lines short:
 
 ```ini
 packages = python3
@@ -129,6 +131,6 @@ Inside a sandbox you can inspect the active environment with
 
 - Keep recipes small and single-purpose; users compose them with flags.
 - Prefer aliases via `provides` over duplicating recipes.
-- Use `base = debian` sparingly — it multiplies image size.
+- Use `base = debian` or `base = kali` sparingly — they multiply image size.
 - Always set `verify`; it is the difference between "worked" and "silently
   broken".
