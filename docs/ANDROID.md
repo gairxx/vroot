@@ -57,7 +57,7 @@ Force or override the engine (mainly for testing):
 
 ```sh
 VROOT_OVERLAY=native|fuse|priv   # skip auto-detection
-VROOT_PRIV_BRIDGE=su|ksu|shizuku # pick a bridge
+VROOT_PRIV_BRIDGE=su|ksu|shizuku|custom  # pick a bridge
 VROOT_SU_STYLE=flag|uid          # su -c CMD  |  su UID CMD
 VROOT_PLATFORM=android|linux     # pretend to be a platform
 ```
@@ -66,6 +66,41 @@ VROOT_PLATFORM=android|linux     # pretend to be a platform
 
 - Magisk/LineageOS/toybox: `su -c "CMD"` (`VROOT_SU_STYLE=flag`)
 - AOSP / emulator: `su UID CMD` (`VROOT_SU_STYLE=uid`)
+
+### Custom / mock bridge
+
+For unusual ROMs, CI or testing you can plug in your own su-compatible
+escalator instead of relying on a system `su`:
+
+```sh
+VROOT_PRIV_BRIDGE=custom \
+VROOT_BRIDGE_CMD=/path/to/scripts/mock-su.sh \
+  vroot -python
+```
+
+`VROOT_BRIDGE_CMD` is invoked as `<cmd> 0 sh <script>` (the AOSP `su UID CMD`
+form). A custom bridge is never cached, so supply the two variables on every run.
+
+`scripts/mock-su.sh` is a small drop-in `su` shim for exactly this. It accepts
+both flavours (`su -c "CMD"` and `su [UID] CMD...`) plus a bare script path, and
+escalates only if it already can:
+
+- root (`id -u` == 0) → runs directly;
+- `MOCK_SU_REAL="sudo"` (or any escalator) → delegates;
+- `MOCK_SU_ALLOW_NONROOT=1` → runs the command as-is (tests only);
+- otherwise it delegates to a real `su` if one is on `PATH`.
+
+Set `MOCK_SU_LOG=/tmp/mock.log` to record every invocation, which is handy for
+proving the privileged path was actually used:
+
+```sh
+$ MOCK_SU_ALLOW_NONROOT=1 sh scripts/mock-su.sh 0 sh -c 'id -u'
+0
+```
+
+When an escalator is available (root, sudo, or a real `su`), this lets you
+exercise the root mount-namespace engine end-to-end — `vroot doctor
+--test-android` — while `MOCK_SU_LOG` proves the bridge really was called.
 
 ## Storage layout
 

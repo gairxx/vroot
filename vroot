@@ -48,6 +48,12 @@ MIME_TYPE="application/x-vroot-image"
 OVERLAY_ENGINE="${VROOT_OVERLAY:-}"
 PRIV_BRIDGE="${VROOT_PRIV_BRIDGE:-}"
 PRIV_SU_STYLE="${VROOT_SU_STYLE:-}"
+# A user-supplied, su-compatible escalator (e.g. scripts/mock-su.sh). When set,
+# it is used as the privileged bridge instead of detecting su/ksu/rish -- handy
+# for tests and unusual ROMs. VROOT_FORCE_BRIDGE=1 also routes through the
+# bridge when already running as root (so the bridge path can be exercised).
+PRIV_BRIDGE_CMD="${VROOT_BRIDGE_CMD:-}"
+FORCE_BRIDGE="${VROOT_FORCE_BRIDGE:-0}"
 BWRAP_BIN="${VROOT_BWRAP:-bwrap}"
 FUSE_OVERLAYFS_BIN="${VROOT_FUSE_OVERLAYFS:-fuse-overlayfs}"
 CAPS_FILE="$VROOT_HOME/.caps"
@@ -116,7 +122,11 @@ probe_tmpfs() {
 # `su` comes in two shapes: Magisk/Lineage (`su -c CMD`) and AOSP/toybox
 # (`su UID CMD`). Detect which one is present so we can invoke it correctly.
 detect_priv_bridge() {
-    [[ -n "$PRIV_BRIDGE" ]] && return 0
+    [[ -n "$PRIV_BRIDGE" && "$PRIV_BRIDGE" != custom ]] && return 0
+    if [[ -n "$PRIV_BRIDGE_CMD" || "${VROOT_PRIV_BRIDGE:-}" == custom ]]; then
+        [[ -n "$PRIV_BRIDGE_CMD" ]] || return 1
+        PRIV_BRIDGE="custom"; return 0
+    fi
     if need_cmd su; then
         PRIV_BRIDGE="su"
         if [[ -z "$PRIV_SU_STYLE" ]]; then
@@ -170,6 +180,10 @@ resolve_engine() {
 overlay_engine() { resolve_engine; printf '%s' "$OVERLAY_ENGINE"; }
 
 write_caps() {
+    # A custom bridge depends on VROOT_BRIDGE_CMD being present at run time, so
+    # never cache it -- otherwise a later run would resolve engine=priv but find
+    # no bridge. Re-probing is cheap.
+    if [[ "${PRIV_BRIDGE:-}" == custom ]]; then rm -f "$CAPS_FILE" 2>/dev/null || true; return 0; fi
     mkdir -p "$VROOT_HOME" 2>/dev/null || true
     { printf 'engine=%s\n' "${OVERLAY_ENGINE:-}"; printf 'bridge=%s\n' "${PRIV_BRIDGE:-}"; printf 'sustyle=%s\n' "${PRIV_SU_STYLE:-}"; } > "$CAPS_FILE" 2>/dev/null || true
 }
@@ -241,6 +255,8 @@ bridge_run() { # SCRIPT_FILE
             else su -c "$1"; fi ;;
         ksu)     ksu -c "$1" ;;
         shizuku) rish -c "$1" ;;
+        custom)  [[ -n "$PRIV_BRIDGE_CMD" ]] || return 127
+                 "$PRIV_BRIDGE_CMD" 0 sh "$1" ;;
         *)       return 127 ;;
     esac
 }
@@ -261,7 +277,7 @@ run_privileged() { # execute "$@" as root through the privileged bridge
 # delete them. Hand the tree back to the invoking user after each run.
 priv_handback() { # DIR
     [[ "$OVERLAY_ENGINE" == priv ]] || return 0
-    [[ "$(id -u 2>/dev/null)" == 0 ]] && return 0
+    [[ "$(id -u 2>/dev/null)" == 0 && "$FORCE_BRIDGE" != 1 ]] && return 0
     [[ -n "${1:-}" && -d "$1" ]] || return 0
     local cf; cf="$(mktemp "$TMP_DIR/chown.XXXXXX.sh")" || return 0
     printf '#!/bin/sh\nchown -R %s:%s %q\n' "$(id -u)" "$(id -g)" "$1" > "$cf"
@@ -319,7 +335,7 @@ spawn_priv() {
     # (EINVAL) and overlayfs even as root, so launch() seeds a writable root
     # directory and we isolate only the mount and UTS namespaces via bubblewrap.
     local bwrap; bwrap="$(command -v "$BWRAP_BIN" 2>/dev/null || printf '%s' "$BWRAP_BIN")"
-    if [[ "$(id -u 2>/dev/null)" == 0 ]]; then
+    if [[ "$(id -u 2>/dev/null)" == 0 && "$FORCE_BRIDGE" != 1 ]]; then
         "$bwrap" "$@"
         return $?
     fi
@@ -1033,7 +1049,10 @@ cmd_doctor() {
         [[ -e /dev/fuse ]] && ok "/dev/fuse: present" || warn "/dev/fuse: missing (fuse-overlayfs unavailable)"
         need_cmd "$FUSE_OVERLAYFS_BIN" && ok "fuse-overlayfs: present" || warn "fuse-overlayfs: missing"
         probe_tmpfs && ok "tmpfs: available" || warn "tmpfs: not detected"
-        if detect_priv_bridge; then ok "privileged bridge: $PRIV_BRIDGE"; else warn "privileged bridge: none (su / ksu / Shizuku)"; fi
+        if detect_priv_bridge; then
+            if [[ "$PRIV_BRIDGE" == custom ]]; then ok "privileged bridge: custom ($PRIV_BRIDGE_CMD)"
+            else ok "privileged bridge: $PRIV_BRIDGE"; fi
+        else warn "privileged bridge: none (su / ksu / Shizuku)"; fi
         printf '\n'
         local eng; eng="$(overlay_engine)"
         case "$eng" in
