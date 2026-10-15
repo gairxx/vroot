@@ -21,6 +21,14 @@ ALPINE_URL="https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64/alpine-m
 ALPINE_SHA256="d4e6fd67dcf75e40c451560ac7265166c2b72a0f38ddc9aae756a7de3d1efa0c"
 DEBIAN_IMG="debian:bookworm-slim"
 KALI_IMG="kalilinux/kali-rolling"
+KALI_VERSIONS=(kali kali-default kali-large kali-everything)
+KALI_VERSION_DESCS=(
+    "minimal rolling rootfs (fastest)"
+    "standard tool set — kali-linux-default (nmap, wireshark, sqlmap, metasploit-framework, ...)"
+    "wider tool set — kali-linux-large"
+    "every Kali tool — kali-linux-everything (multi-GB, slow build)"
+)
+KALI_VERSION_DEFAULT="kali"
 
 IMG_EXT="vroot"
 MIME_TYPE="application/x-vroot-image"
@@ -290,6 +298,34 @@ O_FLAGS=(); O_ENV=(); O_VOLUMES=(); O_CMD=()
 O_OFFLINE=0; O_CLEAN=0; O_KEEP=0; O_RM=0
 O_NAME=""; O_HOSTNAME=""; O_CWD=""; O_ENVFILE=""
 
+prompt_kali_variant() { # stdout: chosen recipe name; non-zero when no prompt applies
+    if [[ -n "${VROOT_KALI_VERSION:-}" ]]; then printf '%s\n' "$VROOT_KALI_VERSION"; return 0; fi
+    [[ -t 0 ]] || return 1
+    local i c choice
+    printf '\n%sKali version:%s\n' "$CB" "$C0" >&2
+    for i in "${!KALI_VERSIONS[@]}"; do
+        printf '  %d) %-16s %s\n' "$((i + 1))" "${KALI_VERSIONS[$i]}" "${KALI_VERSION_DESCS[$i]}" >&2
+    done
+    printf 'Choose [%s]: ' "$KALI_VERSION_DEFAULT" >&2
+    read -r c || c=""
+    c="${c//[[:space:]]/}"
+    if [[ -z "$c" ]]; then
+        choice="$KALI_VERSION_DEFAULT"
+    elif [[ "$c" =~ ^[1-9]$ ]] && (( c <= ${#KALI_VERSIONS[@]} )); then
+        choice="${KALI_VERSIONS[$((c - 1))]}"
+    else
+        choice=""
+        for i in "${!KALI_VERSIONS[@]}"; do
+            [[ "$c" == "${KALI_VERSIONS[$i]}" ]] && { choice="$c"; break; }
+        done
+        if [[ -z "$choice" ]]; then
+            warn "unknown Kali version '$c'; using '$KALI_VERSION_DEFAULT'"
+            choice="$KALI_VERSION_DEFAULT"
+        fi
+    fi
+    printf '%s\n' "$choice"
+}
+
 parse_args() {
     O_FLAGS=(); O_ENV=(); O_VOLUMES=(); O_CMD=()
     O_OFFLINE=0; O_CLEAN=0; O_KEEP=0; O_RM=0
@@ -321,6 +357,17 @@ parse_args() {
             *) [[ -z "$O_NAME" ]] || die "unexpected argument: $1"; O_NAME="$1"; shift ;;
         esac
     done
+    # bare -kali asks which Kali version to build (no prompt when stdin isn't a
+    # TTY, or when VROOT_KALI_VERSION selects one for automation)
+    if (( ${#O_FLAGS[@]} )) && [[ "$O_NAME" != "__help__" ]]; then
+        local -i i
+        for i in "${!O_FLAGS[@]}"; do
+            [[ "${O_FLAGS[$i]}" == "kali" ]] || continue
+            local picked; picked="$(prompt_kali_variant)" || picked=""
+            [[ -n "${picked:-}" ]] && O_FLAGS[$i]="$picked"
+            break
+        done
+    fi
 }
 
 launch() {

@@ -49,6 +49,24 @@ Which base root filesystem to build on.
 - `kali` — Debian-based, fetched via `docker` (`kali-rolling`); glibc, `apt`
   with the Kali repositories; for security tooling.
 
+### Kali versions
+
+`base = kali` is a bare Kali Rolling root shell (no extra tools). Three larger
+recipes add tool sets, and the bare `-kali` flag prompts you to pick one:
+
+| flag | adds |
+| --- | --- |
+| `-kali` | bare rolling rootfs — interactive prompt (default) |
+| `-kali-default` | `kali-linux-default` metapackage |
+| `-kali-large` | `kali-linux-large` |
+| `-kali-everything` | `kali-linux-everything` (multi-GB) |
+
+`-kali` shows an interactive menu when stdin is a TTY; piped/non-interactive
+runs fall straight through to the bare base. Set
+`VROOT_KALI_VERSION=kali-default` to choose a variant non-interactively. Tool
+variants are built on demand the first time they are requested and then cached
+like any other env image.
+
 ### `packages` (optional, repeatable)
 
 Space-separated package names installed with `apk add` (Alpine) or
