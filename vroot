@@ -261,9 +261,14 @@ bridge_run() { # SCRIPT_FILE
     esac
 }
 
+# POSIX-safe single-quote for embedding arbitrary args in a generated #!/bin/sh
+# script. The executing shell may be dash/mksh (e.g. Termux's sh), which do NOT
+# understand bash's $'...' ANSI-C quoting that `printf %q` emits.
+shquote() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
+
 run_privileged() { # execute "$@" as root through the privileged bridge
     local tf; tf="$(mktemp "$TMP_DIR/priv.XXXXXX.sh")" || die "mktemp failed"
-    { printf '#!/bin/sh\nset -e\nexec'; printf ' %q' "$@"; printf '\n'; } > "$tf"
+    { printf '#!/bin/sh\nset -e\nexec'; for a in "$@"; do printf ' %s' "$(shquote "$a")"; done; printf '\n'; } > "$tf"
     chmod 0755 "$tf"
     local rc=0
     bridge_run "$tf" || rc=$?
@@ -272,15 +277,35 @@ run_privileged() { # execute "$@" as root through the privileged bridge
     return $rc
 }
 
+# Security context of a path (Android/SELinux), or empty when unsupported.
+selinux_file_ctx() { # PATH
+    local c; c="$(stat -c '%C' "$1" 2>/dev/null)" || c=""
+    if [[ -z "$c" || "$c" == "?" ]]; then
+        c="$(ls -dZ "$1" 2>/dev/null | awk '{print $1}')"
+    fi
+    [[ "$c" == "?" ]] && c=""
+    printf '%s' "$c"
+}
+
 # The root engine runs sandbox processes as root, so files they create inside the
 # sandbox are root-owned and the invoking (non-root) user can no longer read or
 # delete them. Hand the tree back to the invoking user after each run.
+#
+# Android additionally tags each file with the SELinux level of the *creating*
+# process. Root-created symlinks thus end up without the app's category set and
+# become unreadable by the app (which breaks e.g. squashfs packing), so relabel
+# the subtree to the invoking process's own file context too.
 priv_handback() { # DIR
     [[ "$OVERLAY_ENGINE" == priv ]] || return 0
     [[ "$(id -u 2>/dev/null)" == 0 && "$FORCE_BRIDGE" != 1 ]] && return 0
     [[ -n "${1:-}" && -d "$1" ]] || return 0
     local cf; cf="$(mktemp "$TMP_DIR/chown.XXXXXX.sh")" || return 0
-    printf '#!/bin/sh\nchown -R %s:%s %q\n' "$(id -u)" "$(id -g)" "$1" > "$cf"
+    {
+        printf '#!/bin/sh\n'
+        printf 'chown -R %s:%s %s\n' "$(id -u)" "$(id -g)" "$(shquote "$1")"
+        local ctx; ctx="$(selinux_file_ctx "$1")"
+        [[ -n "$ctx" ]] && printf 'chcon -h -R %s %s\n' "$(shquote "$ctx")" "$(shquote "$1")"
+    } > "$cf"
     chmod 0755 "$cf"
     bridge_run "$cf" >/dev/null 2>&1 || true
     rm -f "$cf"
@@ -340,7 +365,7 @@ spawn_priv() {
         return $?
     fi
     local tf; tf="$(mktemp "$TMP_DIR/priv.XXXXXX.sh")" || die "mktemp failed"
-    { printf '#!/bin/sh\nset -e\nexec'; printf ' %q' "$bwrap" "$@"; printf '\n'; } > "$tf"
+    { printf '#!/bin/sh\nset -e\nexec'; printf ' %s' "$(shquote "$bwrap")"; for a in "$@"; do printf ' %s' "$(shquote "$a")"; done; printf '\n'; } > "$tf"
     chmod 0755 "$tf"
     local rc=0
     bridge_run "$tf" || rc=$?
@@ -770,7 +795,7 @@ rm_instance() {
     if ! rm -rf "$idir" 2>/dev/null; then
         # Some files may be root-owned (created by the root engine); escalate.
         local cf; cf="$(mktemp "$TMP_DIR/rm.XXXXXX.sh")" || { warn "cannot remove sandbox '$name'"; return 1; }
-        printf '#!/bin/sh\nrm -rf %q\n' "$idir" > "$cf"
+        printf '#!/bin/sh\nrm -rf %s\n' "$(shquote "$idir")" > "$cf"
         chmod 0755 "$cf"; bridge_run "$cf" >/dev/null 2>&1 || true; rm -f "$cf"
     fi
     ok "removed sandbox '$name'"
