@@ -128,13 +128,15 @@ detect_priv_bridge() {
         PRIV_BRIDGE="custom"; return 0
     fi
     if need_cmd su; then
-        PRIV_BRIDGE="su"
         if [[ -z "$PRIV_SU_STYLE" ]]; then
-            if su -c true 2>/dev/null; then PRIV_SU_STYLE="flag"
-            elif su 0 true 2>/dev/null; then PRIV_SU_STYLE="uid"
-            else PRIV_SU_STYLE="flag"; fi
+            # A `su` on PATH is not proof of privilege: Termux ships a stub that
+            # just prints "install termux-tools" and exits non-zero. Only treat
+            # it as a bridge if it can actually escalate.
+            if su -c true >/dev/null 2>&1; then PRIV_SU_STYLE="flag"
+            elif su 0 true >/dev/null 2>&1; then PRIV_SU_STYLE="uid"
+            else return 1; fi
         fi
-        return 0
+        PRIV_BRIDGE="su"; return 0
     fi
     if need_cmd ksu;      then PRIV_BRIDGE="ksu";      return 0; fi
     if need_cmd rish;     then PRIV_BRIDGE="shizuku";  return 0; fi
