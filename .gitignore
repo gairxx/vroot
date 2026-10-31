@@ -9,3 +9,4 @@ vroot.legacy
 *.swp
 *~
 .DS_Store
+dist/
