@@ -26,11 +26,16 @@ vroot -rust -- cargo build # run one command instead of opening a shell
 Nothing from your host is visible inside unless you expose it with `-v`, and
 the sandbox disappears when you exit (unless you give it a name).
 
+It is also the shortest path from an AI agent to a working toolchain: no
+daemon, no image registry, no sudo, no build queue. See
+[docs/AGENTS.md](docs/AGENTS.md) for the machine-facing contract.
+
 ---
 
 ## Table of contents
 
 - [Why vroot](#why-vroot)
+- [Built for agents](#built-for-agents)
 - [How it compares](#how-it-compares)
 - [Requirements](#requirements)
 - [Install](#install)
@@ -43,6 +48,41 @@ the sandbox disappears when you exit (unless you give it a name).
 - [Documentation](#documentation)
 - [FAQ](#faq)
 - [License](#license)
+
+---
+
+## Built for agents
+
+Agents do not need a nicer terminal, they need **resources on demand and no
+coordination overhead**. `vroot` is built for that shape of work:
+
+- **No daemon, no registry, no sudo.** A toolchain is one flag away and starts
+  in tens of milliseconds, so an agent can afford to spawn a fresh environment
+  per step instead of reusing a fragile one.
+- **JSON when you ask for it.** `vroot build -python --json`,
+  `vroot ls --json`, `vroot envs --json`, `vroot info NAME --json` — stdout is
+  pure JSON, logs stay on stderr, exit codes are meaningful.
+- **Parallel-safe.** N agents asking for the same environment produce one
+  image: the first builds, the rest wait and report `"cached": true`. Cache
+  extraction is atomic, so concurrent launches cannot corrupt each other.
+- **Checkpoint, then fork.** `vroot save NAME golden.vroot` turns a good state
+  into one file; boot it as many named sandboxes as you like and throw the
+  failed ones away. The image is never modified.
+- **Host stays hidden.** Real uid 0 inside, but no host filesystem, no host
+  processes, no host network surprises unless explicitly mounted.
+- **Deterministic surface.** Anonymous sandboxes are ephemeral, named ones
+  persist, `-offline` cuts the network, and `vroot doctor` is an explicit
+  preflight.
+
+```console
+$ vroot build -python --json
+{"env":"/home/u/.local/share/vroot/envs/python-84d0423ed3.sqfs","cached":false}
+$ vroot -python task1 -- pytest -q            # exit code is pytest's
+$ vroot save task1 task1.vroot && vroot task1.vroot retry -- pytest -q
+```
+
+The full contract (output shapes, locking, fork semantics, rules for agents)
+lives in [docs/AGENTS.md](docs/AGENTS.md).
 
 ---
 
@@ -229,6 +269,7 @@ vroot [FLAGS] [NAME] [OPTIONS] [-- COMMAND]
 | `-hostname H` | hostname inside (default: the sandbox name) |
 | `-clean` | start with an empty environment |
 | `-rm` | delete the sandbox after this session |
+| `--json` | machine-readable output for `build`, `ls`, `envs`, `info` |
 
 ## Managing sandboxes
 
@@ -297,6 +338,7 @@ See [docs/BUILDING.md](docs/BUILDING.md) for worked examples, and
 
 ## Documentation
 
+- [docs/AGENTS.md](docs/AGENTS.md) — the contract for AI agents and automation
 - [docs/BUILDING.md](docs/BUILDING.md) — add your own language/tool
 - [docs/LANGUAGES.md](docs/LANGUAGES.md) — full flag catalog
 - [docs/RECIPES.md](docs/RECIPES.md) — recipe field reference
@@ -345,6 +387,13 @@ Alpine images are tiny and build in seconds. Recipes that need glibc or
 **Does it work without systemd / in a container / under WSL?**
 It needs unprivileged user namespaces. Run `vroot doctor` to check.
 
+**Can an AI agent use it?**
+Yes, that is a first-class use case. Management commands take `--json`, stdout
+is pure JSON, exit codes are forwarded from the command you run, builds of the
+same environment are serialised across parallel processes, and a sandbox can be
+checkpointed with `save` and forked by booting the image file under new names.
+See [docs/AGENTS.md](docs/AGENTS.md).
+
 ## Keywords
 
 root shell sandbox · unprivileged Linux sandbox · container alternative ·
@@ -356,7 +405,10 @@ squashfs environment image · overlayfs copy-on-write · instant Linux sandbox �
 fast sandbox boot · language sandbox · Python sandbox · Node.js sandbox ·
 Rust sandbox · PHP sandbox · Go sandbox · polyglot dev environment ·
 reproducible development environment · disposable shell · dev container
-alternative.
+alternative · sandbox for AI agents · agent sandbox · LLM tool sandbox ·
+autonomous agent environment · machine-readable sandbox · parallel agent
+sandboxes · checkpoint and fork sandbox · JSON CLI sandbox · coding agent
+runtime.
 
 ## License
 
