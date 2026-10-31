@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-VERSION="2.1.0"
+VERSION="2.2.0"
 
 # Resolve our own path with pure bash so the hot path forks only when vroot is
 # installed as a symlink (the common `~/.local/bin/vroot` case).
@@ -273,6 +273,12 @@ meta_get() { [[ -f "$1" ]] && sed -n "s/^$2=//p" "$1" | head -1 || true; }
 fsize() { du -sh "$1" 2>/dev/null | cut -f1 || true; }
 meta_set() { local f="$1"; shift; : > "$f"; local kv; for kv in "$@"; do printf '%s\n' "$kv" >> "$f"; done; }
 
+fsize_bytes() { local n; n="$(du -sb "$1" 2>/dev/null | cut -f1 || true)"; printf '%s' "${n:-0}"; }
+json_str() { local s="$1"; s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; printf '"%s"' "$s"; }
+json_bool() { if [[ "$1" == 1 ]]; then printf true; else printf false; fi; }
+# emit_env PATH CACHED -- build_env output contract (JSON callers ask for both).
+emit_env() { if [[ -n "${VROOT_BUILD_REPORT:-}" ]]; then printf '%s\t%s\n' "$1" "$2"; else printf '%s\n' "$1"; fi; }
+
 declare -A RECIPE_FILE
 declare -A RECIPE_DESC
 
@@ -386,7 +392,7 @@ build_env_docker() {
     mksquashfs "$tmp" "$envfile" -all-root -comp zstd -noappend -no-progress -quiet >/dev/null 2>&1 || { rm -rf "$tmp"; die "mksquashfs failed"; }
     rm -rf "$tmp"
     ok "built env '$slug' -> $envfile ($(fsize "$envfile"))"
-    printf '%s\n' "$envfile"
+    emit_env "$envfile" 0
 }
 
 build_env() {
@@ -421,8 +427,19 @@ build_env() {
 
     envfile="$ENVS_DIR/${slug}-${hash}.sqfs"
     if [[ -f "$envfile" ]]; then
-        printf '%s\n' "$envfile"; return 0
+        emit_env "$envfile" 1; return 0
     fi
+
+    # One image, one builder: parallel agents asking for the same flag set wait
+    # for the first build instead of racing mksquashfs on the same path.
+    local tlock="$envfile.lock" waited=0
+    if ! mkdir "$tlock" 2>/dev/null; then
+        while [[ ! -f "$envfile" && $waited -lt 900 ]]; do sleep 0.2; waited=$((waited+1)); done
+        if [[ -f "$envfile" ]]; then emit_env "$envfile" 1; return 0; fi
+        rm -rf "$tlock"; mkdir "$tlock" 2>/dev/null || true
+    fi
+    VROOT_BUILD_LOCK="$tlock"
+    trap 'rm -rf "${VROOT_BUILD_LOCK:-}"' EXIT
 
     local packages="" setup="" envs="" paths="" verify="" p
     local -a pkgs=(); local -A pseen=()
@@ -495,7 +512,7 @@ build_env() {
         || { rm -rf "$tmp"; die "mksquashfs failed"; }
     rm -rf "$tmp"
     ok "built env '$slug' -> $envfile ($(fsize "$envfile"))"
-    printf '%s\n' "$envfile"
+    emit_env "$envfile" 0
 }
 
 ensure_cache() {
@@ -504,19 +521,27 @@ ensure_cache() {
     local marker="$CACHE_DIR/.${cache##*/}.ready"
     if [[ -f "$marker" && -d "$cache" ]]; then return 0; fi
     mkdir -p "$CACHE_DIR"
+    # Unpack into a private dir and swap it in, so parallel agents launching the
+    # same env never observe (or delete) each other's half-written tree.
+    local tmp="$cache.tmp.$$"
+    rm -rf "$tmp"
+    unsquashfs -q -d "$tmp" "$envfile" >/dev/null 2>&1 || { rm -rf "$tmp"; die "cannot unpack env image: $envfile"; }
     rm -rf "$cache"
-    unsquashfs -q -d "$cache" "$envfile" >/dev/null 2>&1 || die "cannot unpack env image: $envfile"
+    if ! mv "$tmp" "$cache" 2>/dev/null; then
+        rm -rf "$tmp"
+        [[ -d "$cache" ]] || die "cannot install env cache: $cache"
+    fi
     : > "$marker"
 }
 
 O_FLAGS=(); O_ENV=(); O_VOLUMES=(); O_CMD=()
 O_OFFLINE=0; O_CLEAN=0; O_KEEP=0; O_RM=0
-O_NAME=""; O_HOSTNAME=""; O_CWD=""; O_ENVFILE=""
+O_NAME=""; O_HOSTNAME=""; O_CWD=""; O_ENVFILE=""; O_JSON=0
 
 parse_args() {
     O_FLAGS=(); O_ENV=(); O_VOLUMES=(); O_CMD=()
     O_OFFLINE=0; O_CLEAN=0; O_KEEP=0; O_RM=0
-    O_NAME=""; O_HOSTNAME=""; O_CWD=""; O_ENVFILE=""
+    O_NAME=""; O_HOSTNAME=""; O_CWD=""; O_ENVFILE=""; O_JSON=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --) shift; O_CMD=("$@"); break ;;
@@ -535,6 +560,7 @@ parse_args() {
             -name=*|--name=*) O_NAME="${1#*=}"; shift ;;
             -hostname|--hostname) O_HOSTNAME="${2:?}"; shift 2 ;;
             -hostname=*|--hostname=*) O_HOSTNAME="${1#*=}"; shift ;;
+            -json|--json) O_JSON=1; shift ;;
             -h|--help) O_NAME="__help__"; shift ;;
             -*) local fl="${1#-}"; fl="${fl#-}"
                 if recipe_file_for "$fl"; then O_FLAGS+=("$fl"); else die "unknown flag -$fl (try: vroot recipe list)"; fi
@@ -560,7 +586,7 @@ launch() {
         idir="$INST_DIR/$name"
         if [[ ! -d "$idir" ]]; then
             mkdir -p "$idir"
-            meta_set "$idir/meta" "ENV=$cname" "CREATED=$(date -Is)"
+            meta_set "$idir/meta" "ENV=$cname" "IMG=$envfile" "CREATED=$(date -Is)"
         fi
         upper="$idir/upper"; work="$idir/work"; merged="$idir/.merged"
         if [[ ! -d "$upper" || ! -d "$work" || ! -d "$merged" ]]; then
@@ -637,16 +663,21 @@ cmd_run() {
     elif [[ ${#O_FLAGS[@]} -gt 0 ]]; then
         envfile="$(build_env "${O_FLAGS[@]}")" || exit 1
     elif [[ -n "$name" && -f "$INST_DIR/$name/meta" ]]; then
-        envfile="$ENVS_DIR/$(meta_get "$INST_DIR/$name/meta" ENV).sqfs"
+        local im; im="$(meta_get "$INST_DIR/$name/meta" IMG)"
+        if [[ -n "$im" && -f "$im" ]]; then envfile="$im"
+        else envfile="$ENVS_DIR/$(meta_get "$INST_DIR/$name/meta" ENV).sqfs"; fi
     else
         envfile="$(build_env base)" || exit 1
     fi
 
     if [[ -n "$name" && -f "$INST_DIR/$name/meta" ]]; then
-        local cur; cur="$(meta_get "$INST_DIR/$name/meta" ENV)"
-        local curname="${envfile##*/}"; curname="${curname%.vroot}"; curname="${curname%.sqfs}"
-        if [[ "$curname" != "$cur" ]]; then
-            die "sandbox '$name' already uses env '$cur'; use another name or 'vroot rm $name'"
+        local cur curimg; cur="$(meta_get "$INST_DIR/$name/meta" ENV)"; curimg="$(meta_get "$INST_DIR/$name/meta" IMG)"
+        if [[ -n "$curimg" && -f "$curimg" ]]; then
+            [[ "$(readlink -f "$envfile")" == "$(readlink -f "$curimg")" ]] \
+                || die "sandbox '$name' already uses env '$cur'; use another name or 'vroot rm $name'"
+        else
+            local curname="${envfile##*/}"; curname="${curname%.vroot}"; curname="${curname%.sqfs}"
+            [[ "$curname" == "$cur" ]] || die "sandbox '$name' already uses env '$cur'; use another name or 'vroot rm $name'"
         fi
     fi
 
@@ -655,13 +686,36 @@ cmd_run() {
 
 cmd_build() {
     parse_args "$@"
-    local envfile
-    if [[ ${#O_FLAGS[@]} -gt 0 ]]; then envfile="$(build_env "${O_FLAGS[@]}")"; else envfile="$(build_env base)"; fi
-    ok "env file: $envfile"
+    local out envfile cached=0
+    if [[ ${#O_FLAGS[@]} -gt 0 ]]; then out="$(VROOT_BUILD_REPORT=1 build_env "${O_FLAGS[@]}")"; else out="$(VROOT_BUILD_REPORT=1 build_env base)"; fi
+    if [[ "$out" == *$'\t'* ]]; then envfile="${out%%$'\t'*}"; cached="${out#*$'\t'}"; else envfile="$out"; fi
+    if [[ "$O_JSON" == 1 ]]; then
+        printf '{"env":%s,"cached":%s}\n' "$(json_str "$envfile")" "$(json_bool "$cached")"
+    else
+        ok "env file: $envfile"
+    fi
 }
 
 cmd_ls() {
     ensure_dirs
+    local json=0
+    [[ "${1:-}" == --json || "${1:-}" == -json ]] && json=1
+    if [[ "$json" == 1 ]]; then
+        local sep="" n idir env sz cre age t
+        printf '['
+        for idir in "$INST_DIR"/*; do
+            [[ -d "$idir" ]] || continue
+            n="$(basename "$idir")"
+            env="$(meta_get "$idir/meta" ENV)"; cre="$(meta_get "$idir/meta" CREATED)"
+            sz="$(fsize_bytes "$idir")"; age=null
+            if [[ -n "$cre" ]]; then t=$(date -d "$cre" +%s 2>/dev/null || echo 0); [[ $t -gt 0 ]] && age="$(( ($(date +%s)-t)/60 ))"; fi
+            printf '%s{"name":%s,"env":%s,"image":%s,"bytes":%s,"age_minutes":%s}' "$sep" \
+                "$(json_str "$n")" "$(json_str "$env")" "$(json_str "$(meta_get "$idir/meta" IMG)")" "${sz:-0}" "$age"
+            sep=","
+        done
+        printf ']\n'
+        return 0
+    fi
     printf '%s%-22s %-26s %-6s %s%s\n' "$CB" SANDBOX ENV SIZE AGE "$C0"
     local found=0 n idir env sz cre age t
     for idir in "$INST_DIR"/*; do
@@ -694,6 +748,26 @@ cmd_rm() {
 
 cmd_envs() {
     ensure_dirs
+    local json=0
+    [[ "${1:-}" == --json || "${1:-}" == -json ]] && json=1
+    if [[ "$json" == 1 ]]; then
+        local sep="" f
+        printf '{"images":['
+        for f in "$ENVS_DIR"/*.sqfs; do
+            [[ -f "$f" ]] || continue
+            printf '%s{"file":%s,"bytes":%s}' "$sep" "$(json_str "${f##*/}")" "$(fsize_bytes "$f")"
+            sep=","
+        done
+        printf '],"bases":['
+        sep=""
+        for f in "$BASES_DIR"/*; do
+            [[ -d "$f" ]] || continue
+            printf '%s{"name":%s,"bytes":%s}' "$sep" "$(json_str "${f##*/}")" "$(fsize_bytes "$f")"
+            sep=","
+        done
+        printf ']}\n'
+        return 0
+    fi
     printf '%s%-40s %-8s %s%s\n' "$CB" "ENV IMAGE" SIZE "$C0"
     local found=0 f
     for f in "$ENVS_DIR"/*.sqfs; do
@@ -722,8 +796,17 @@ cmd_prune() {
 }
 
 cmd_info() {
-    local name="${1:-}"; [[ -n "$name" ]] || die "usage: vroot info NAME"
+    local name="${1:-}" json=0
+    [[ "${2:-}" == --json || "${2:-}" == -json ]] && json=1
+    [[ -n "$name" ]] || die "usage: vroot info NAME [--json]"
     local idir="$INST_DIR/$name"; [[ -d "$idir" ]] || die "no such sandbox: $name"
+    if [[ "$json" == 1 ]]; then
+        printf '{"name":%s,"env":%s,"image":%s,"created":%s,"bytes":%s,"changed_files":%s,"path":%s}\n' \
+            "$(json_str "$name")" "$(json_str "$(meta_get "$idir/meta" ENV)")" \
+            "$(json_str "$(meta_get "$idir/meta" IMG)")" "$(json_str "$(meta_get "$idir/meta" CREATED)")" \
+            "$(fsize_bytes "$idir")" "$(find "$idir/upper" -mindepth 1 2>/dev/null | wc -l || true)" "$(json_str "$idir")"
+        return 0
+    fi
     printf '%ssandbox%s %s\n' "$CB" "$C0" "$name"
     printf '  env:     %s\n' "$(meta_get "$idir/meta" ENV)"
     printf '  created: %s\n' "$(meta_get "$idir/meta" CREATED)"
@@ -737,7 +820,8 @@ cmd_save() {
     [[ -n "$name" ]] || die "usage: vroot save NAME [OUT.$IMG_EXT]"
     local idir="$INST_DIR/$name"; [[ -d "$idir" ]] || die "no such sandbox: $name"
     out="${out:-$PWD/$name.$IMG_EXT}"
-    local envfile="$ENVS_DIR/$(meta_get "$idir/meta" ENV).sqfs"
+    local envfile; envfile="$(meta_get "$idir/meta" IMG)"
+    [[ -n "$envfile" && -f "$envfile" ]] || envfile="$ENVS_DIR/$(meta_get "$idir/meta" ENV).sqfs"
     [[ -f "$envfile" ]] || die "env image missing"
     local envcname="${envfile##*/}"; envcname="${envcname%.sqfs}"
     local cache="$CACHE_DIR/$envcname"
@@ -891,7 +975,7 @@ cmd_banner() {
  \ \ / / |  _ \ / _ \ / _ \ |_   _|
   \ V /  | |_) | | | | | | | |   | |
    | |   |  _ < | |_| | | |_| |  | |
-   |_|   |_| \_\ \___/ \___/    |_|
+    |_|   |_| \_\ \___/ \___/    |_|
 ART
     printf '%s' "$C0"
     printf '  %svroot %s%s — a root shell in a sandbox, built from a flag.\n\n' "$CD" "$VERSION" "$C0"
@@ -965,6 +1049,15 @@ MANAGEMENT
   vroot info NAME              sandbox details
   vroot doctor                 check the host setup
 
+MACHINE INTERFACE (agents and automation)
+  --json                       machine-readable output (build, ls, envs, info)
+  vroot build -python --json   {"env":"...","cached":false}
+  vroot ls --json              [{"name","env","image","bytes","age_minutes"}]
+  vroot envs --json            {"images":[...],"bases":[...]}
+  vroot info NAME --json       one sandbox as a JSON object
+  JSON goes to stdout, logs to stderr, exit codes are meaningful, and parallel
+  builds/launches of the same env are serialised safely.
+
 HOW IT WORKS
   - flags pick recipes -> a single-file env image (envs/*.sqfs) is built once
   - each session runs it via bubblewrap with full root capabilities, its own
@@ -980,13 +1073,13 @@ main() {
     case "$cmd" in
         "")          cmd_banner ;;
         build)       shift; cmd_build "$@" ;;
-        ls|list)     cmd_ls ;;
+        ls|list)     shift; cmd_ls "$@" ;;
         rm|delete)   shift; cmd_rm "$@" ;;
         save)        shift; cmd_save "$@" ;;
         load)        shift; cmd_run "$@" ;;
         filetype)    shift; cmd_filetype "$@" ;;
         recipe|recipes) shift; cmd_recipe "$@" ;;
-        envs|images) cmd_envs ;;
+        envs|images) shift; cmd_envs "$@" ;;
         prune|gc)    cmd_prune ;;
         info)        shift; cmd_info "$@" ;;
         doctor)      shift; cmd_doctor "${1:-}" ;;
