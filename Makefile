@@ -6,15 +6,15 @@ DIST := dist/vroot-$(VERSION)
 .PHONY: install uninstall test dist clean
 
 install:
-	VROOT_PREFIX="$(PREFIX)" VROOT_VERSION="$(REF)" ./install.sh
+	VROOT_PREFIX="$(PREFIX)" VROOT_VERSION="$(REF)" sh ./install.sh
 
 uninstall:
-	VROOT_PREFIX="$(PREFIX)" ./install.sh --uninstall
+	VROOT_PREFIX="$(PREFIX)" sh ./install.sh --uninstall
 
 test:
 	bash -n vroot
 	sh -n install.sh
-	./vroot version
+	bash ./vroot version
 
 dist:
 	@set -eu; \
