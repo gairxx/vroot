@@ -137,8 +137,8 @@ has copy buttons for every method.
 | Method | Command |
 | --- | --- |
 | One-line install | `curl -fsSL https://raw.githubusercontent.com/gairxx/vroot/main/install.sh \| sh` |
-| Clone and install | `git clone https://github.com/gairxx/vroot && cd vroot && ./install.sh` |
-| Source archive | [main.tar.gz](https://github.com/gairxx/vroot/archive/refs/heads/main.tar.gz) → unpack → `./install.sh` |
+| Clone and install | `git clone https://github.com/gairxx/vroot && cd vroot && sh install.sh` |
+| Source archive | [main.tar.gz](https://github.com/gairxx/vroot/archive/refs/heads/main.tar.gz) → unpack → `sh install.sh` |
 | Custom prefix | `curl -fsSL ... \| sh -s -- --prefix /opt/vroot` |
 | Pin a ref | `curl -fsSL ... \| sh -s -- --version <branch-or-tag>` |
 | Uninstall | `curl -fsSL ... \| sh -s -- --uninstall` |
