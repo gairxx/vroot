@@ -137,6 +137,10 @@ tr:hover td { background: var(--bg3); }
 .badge.b { color: var(--accent); border-color: rgba(88,166,255,.4); }
 
 /* ---------- steps ---------- */
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin: 16px 0; }
+.grid2 .card h4 { margin: 0 0 10px; font-size: 15px; }
+.grid2 .card p:last-child { margin-bottom: 0; }
+.grid2 .code-block { margin: 0 0 10px; }
 .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 16px 0; }
 .step { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
 .step .n { color: var(--accent); font-weight: 700; font-family: ui-monospace, monospace; }
