@@ -21,6 +21,7 @@
     <a href="." class="active">Demo</a>
     <a href="docs.html">Docs</a>
     <a href="flags.html">Flags</a>
+    <a href="#agents">Agents</a>
     <a href="recipes.html">Recipes</a>
     <a href="https://github.com/gairxx/vroot" target="_blank" rel="noopener">GitHub</a>
   </div>
@@ -32,6 +33,8 @@
     <h1>A <span class="accent">root shell</span> in a sandbox,<br>built from a flag.</h1>
     <p>Instant, isolated, single-file Linux development environments that boot in
     milliseconds — no daemon, no sudo, no host access by default.</p>
+    <p class="note" style="margin-top:-4px">For humans at a terminal, and for AI
+    agents that need a toolchain on demand without a build queue.</p>
     <div class="badges">
       <span class="badge g">µs boot</span>
       <span class="badge g">real uid 0 · no sudo</span>
@@ -89,6 +92,56 @@
         <button class="chip" onclick="vrootDemoRun('vroot recipe list')">vroot recipe list</button>
         <button class="chip" onclick="vrootDemoRun('vroot ls')">vroot ls</button>
         <button class="chip" onclick="vrootDemoRun('clear')">clear</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= AGENTS ================= -->
+  <section id="agents">
+    <h2><span class="hash">#</span> Built for agents</h2>
+    <p class="note">Agents do not need a nicer terminal — they need resources on
+    demand and no coordination overhead. <b>No daemon, no registry, no sudo, tens
+    of milliseconds to a root shell.</b></p>
+
+    <div class="grid2">
+      <div class="card">
+        <h4>Machine-readable</h4>
+        <pre class="code-block"><code>$ vroot build -python --json
+{"env":"…/python-84d0423ed3.sqfs","cached":false}
+
+$ vroot ls --json
+[{"name":"job7","env":"python-84d0423ed3",
+  "bytes":20598,"age_minutes":3}]</code></pre>
+        <p class="note">stdout is pure JSON, logs stay on stderr, exit codes are
+        forwarded from the command you run.</p>
+      </div>
+      <div class="card">
+        <h4>Parallel-safe</h4>
+        <pre class="code-block"><code>$ vroot build -python &amp;
+$ vroot build -python &amp;
+{"env":"…","cached":false}
+{"env":"…","cached":true}</code></pre>
+        <p class="note">One image per flag set: the first agent builds, the rest
+        wait on a lock and reuse it. Cache extraction is atomic, so concurrent
+        launches cannot corrupt each other.</p>
+      </div>
+      <div class="card">
+        <h4>Checkpoint and fork</h4>
+        <pre class="code-block"><code>$ vroot save golden golden.vroot
+$ vroot golden.vroot try1 -- pytest -q
+$ vroot golden.vroot try2 -- pytest -q
+$ vroot try1 -- git diff</code></pre>
+        <p class="note">The image is read-only; every fork writes to its own
+        overlay, so a failed attempt costs a name, never the good state.</p>
+      </div>
+      <div class="card">
+        <h4>Host stays hidden</h4>
+        <p class="note" style="margin-top:0">Real uid 0 inside, but no host
+        filesystem, no host processes and no host network surprises unless you
+        mount or allow them. <code class="inline">-offline</code> cuts the network,
+        anonymous sandboxes vanish on exit, named ones persist until
+        <code class="inline">vroot rm</code>.</p>
+        <p><a class="btn ghost" href="https://github.com/gairxx/vroot/blob/main/docs/AGENTS.md" target="_blank" rel="noopener">Agent contract →</a></p>
       </div>
     </div>
   </section>
