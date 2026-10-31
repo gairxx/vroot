@@ -7,6 +7,8 @@
 [![No daemon](https://img.shields.io/badge/daemon-none-success.svg)](#how-it-works)
 [![Root without sudo](https://img.shields.io/badge/root-no%20sudo-success.svg)](#how-it-works)
 [![Shell: bash](https://img.shields.io/badge/shell-bash-4EAA25.svg)](#requirements)
+[![Install](https://img.shields.io/badge/install-one%20line-2ea44f.svg)](#install)
+[![Landing page](https://img.shields.io/badge/site-gairxx.github.io%2Fvroot-5ee1a1.svg)](https://gairxx.github.io/vroot/)
 
 `vroot` gives you a **throwaway or persistent root filesystem** that starts in
 milliseconds, is fully isolated from your host, and contains exactly the tools
@@ -115,17 +117,35 @@ vroot doctor
 
 ## Install
 
-```sh
-git clone https://github.com/gairxx/vroot.git
-ln -s "$PWD/vroot/vroot" ~/.local/bin/vroot   # ensure ~/.local/bin is on PATH
-vroot doctor
-```
-
-Or grab just the script — it is self-contained:
+One line, no sudo, no daemon:
 
 ```sh
-install -Dm755 vroot/vroot ~/.local/bin/vroot
+curl -fsSL https://raw.githubusercontent.com/gairxx/vroot/main/install.sh | sh
 ```
+
+That installs the launcher to `~/.local/bin/vroot` and the recipe catalogue to
+`~/.local/lib/vroot`. Then check the host and start a shell:
+
+```sh
+vroot doctor      # verify bubblewrap, namespaces, squashfs
+vroot -python     # a root shell with Python
+```
+
+Prefer clicking? **[gairxx.github.io/vroot](https://gairxx.github.io/vroot/)**
+has copy buttons for every method.
+
+| Method | Command |
+| --- | --- |
+| One-line install | `curl -fsSL https://raw.githubusercontent.com/gairxx/vroot/main/install.sh \| sh` |
+| Clone and install | `git clone https://github.com/gairxx/vroot && cd vroot && ./install.sh` |
+| Source archive | [main.tar.gz](https://github.com/gairxx/vroot/archive/refs/heads/main.tar.gz) → unpack → `./install.sh` |
+| Custom prefix | `curl -fsSL ... \| sh -s -- --prefix /opt/vroot` |
+| Pin a version | `curl -fsSL ... \| sh -s -- --version v2.1.0` |
+| Uninstall | `curl -fsSL ... \| sh -s -- --uninstall` |
+
+`install.sh` installs from the working tree when run inside a checkout, and
+otherwise downloads a tarball — no build step either way. Uninstalling keeps your
+sandboxes and images in `~/.local/share/vroot`.
 
 ## Quick start
 
@@ -302,9 +322,9 @@ is not visible. It is real root in an isolated namespace, not root on your host.
 Yes, explicitly, with `-v ~/src:/src`. Nothing is shared until you ask.
 
 **Where are environments stored?**
-Under `~/.local/share/vroot/` (`envs/`, `cache/`, `instances/`). Override with
-`$VROOT_HOME`. Recipes are read from `~/.config/vroot/recipes/` (override with
-`$VROOT_CONFIG`).
+Under `~/.local/share/vroot/` (`envs/`, `cache/`, `instances/`). Override
+with `$VROOT_HOME`. Recipes are read from
+`~/.config/vroot/recipes/` (override with `$VROOT_CONFIG`).
 
 **How do I make a portable environment?**
 `vroot save NAME out.vroot` writes a single image file; boot it with
