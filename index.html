@@ -40,8 +40,15 @@
       <span class="badge b">42 built-in recipes</span>
       <span class="badge b">MIT · open source</span>
     </div>
+    <div class="install-strip">
+      <span class="prompt">$</span>
+      <code>curl -fsSL https://raw.githubusercontent.com/gairxx/vroot/main/install.sh | sh</code>
+      <button class="btn copy-btn" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/gairxx/vroot/main/install.sh | sh">Copy</button>
+    </div>
+    <p class="note" style="margin-top:-2px">One line, no sudo — installs to <code class="inline">~/.local/bin/vroot</code>.</p>
     <p>
       <a class="btn" href="#demo">Try the demo ↓</a>
+      <a class="btn ghost" href="#install">Install options</a>
       <a class="btn ghost" href="docs.html">Read the docs</a>
       <a class="btn ghost" href="https://github.com/gairxx/vroot" target="_blank" rel="noopener">★ GitHub</a>
     </p>
@@ -74,7 +81,7 @@
       <p class="mono" style="margin:0 0 10px;color:var(--muted)">Suggestions</p>
       <div class="chips">
         <button class="chip" onclick="vrootDemoRun('vroot')">vroot</button>
-        <button class="chip" onclick="vrootDemoRun('vroot -python -- python3 -c \'print(2+2)\'')">vroot -python -- python3 -c 'print(2+2)'</button>
+        <button class="chip" onclick="vrootDemoRun('vroot -python -- python3 -c \'print(2+2)\')">vroot -python -- python3 -c 'print(2+2)'</button>
         <button class="chip" onclick="vrootDemoRun('vroot -node -sqlite')">vroot -node -sqlite</button>
         <button class="chip" onclick="vrootDemoRun('vroot -php -sqlite -git -- php -v | head -1')">vroot -php -sqlite -git</button>
         <button class="chip" onclick="vrootDemoRun('vroot -python work -- id')">vroot -python work -- id</button>
@@ -130,12 +137,29 @@ ls: /home: No such file or directory   ← the host is not visible</code></pre>
   <!-- ================= INSTALL ================= -->
   <section id="install">
     <h2><span class="hash">#</span> Install</h2>
-    <pre class="code-block"><code>git clone https://github.com/gairxx/vroot.git
-ln -s "$PWD/vroot/vroot" ~/.local/bin/vroot    # put it on PATH
-vroot doctor</code></pre>
+    <div class="install-strip">
+      <span class="prompt">$</span>
+      <code>curl -fsSL https://raw.githubusercontent.com/gairxx/vroot/main/install.sh | sh</code>
+      <button class="btn copy-btn" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/gairxx/vroot/main/install.sh | sh">Copy</button>
+    </div>
+    <p class="note">Then check the host and start a shell:</p>
+    <pre class="code-block"><code>vroot doctor      # verify bubblewrap, namespaces, squashfs
+vroot -python     # a root shell with Python</code></pre>
+
+    <div class="card" style="overflow-x:auto">
+      <table>
+        <tr><th>Method</th><th>Command</th></tr>
+        <tr><td>Clone and install</td><td><code>git clone https://github.com/gairxx/vroot.git &amp;&amp; cd vroot &amp;&amp; ./install.sh</code></td></tr>
+        <tr><td>Source archive</td><td><a href="https://github.com/gairxx/vroot/archive/refs/heads/main.tar.gz">main.tar.gz</a> → unpack → <code>./install.sh</code></td></tr>
+        <tr><td>Custom prefix</td><td><code>curl -fsSL …/install.sh | sh -s -- --prefix /opt/vroot</code></td></tr>
+        <tr><td>Pin a version</td><td><code>curl -fsSL …/install.sh | sh -s -- --version v2.1.0</code></td></tr>
+        <tr><td>Uninstall</td><td><code>curl -fsSL …/install.sh | sh -s -- --uninstall</code></td></tr>
+      </table>
+    </div>
     <p class="note">Requires Linux with user namespaces, plus <code>bubblewrap</code>,
     <code>util-linux</code> and <code>squashfs-tools</code>. <code>docker</code> is only
-    needed for flags that build on a Debian base.</p>
+    needed for flags that build on a Debian base. The installer needs no build step and
+    keeps sandboxes/images when uninstalling.</p>
   </section>
 
   <!-- ================= COMPARISONS ================= -->
@@ -164,6 +188,40 @@ vroot doctor</code></pre>
 </footer>
 
 <script src="app.js"></script>
+<script>
+  (function () {
+    function flash(btn, text) {
+      var prev = btn.textContent;
+      btn.textContent = text;
+      btn.classList.add('copied');
+      setTimeout(function () { btn.textContent = prev; btn.classList.remove('copied'); }, 1600);
+    }
+    function fallback(text, btn) {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed'; ta.style.left = '-9999px';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); flash(btn, 'Copied'); }
+      catch (e) { flash(btn, 'Select + copy'); }
+      document.body.removeChild(ta);
+    }
+    function copy(text, btn) {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(function () { flash(btn, 'Copied'); },
+          function () { fallback(text, btn); });
+      } else {
+        fallback(text, btn);
+      }
+    }
+    function init() {
+      document.querySelectorAll('[data-copy]').forEach(function (btn) {
+        btn.addEventListener('click', function () { copy(btn.getAttribute('data-copy'), btn); });
+      });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  })();
+</script>
 <script>
   function vrootDemoRun(line) {
     var el = document.getElementById('term-input');
