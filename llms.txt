@@ -1,0 +1,52 @@
+# vroot
+
+> vroot is a single Bash script that turns a flag into an isolated Linux root
+> shell: `vroot -python` gives you a root shell with Python, built from a
+> single-file squashfs image, launched with bubblewrap and overlayfs. No daemon,
+> no sudo, no image build step. Built so that agents and scripts can obtain a
+> toolchain on demand and throw it away.
+
+Version: 2.2.x · License: MIT · Language: Bash (single file) · Host: Linux
+
+## Install
+
+    curl -fsSL https://raw.githubusercontent.com/gairxx/vroot/main/install.sh | sh
+
+Installs the launcher plus its recipe catalogue under `~/.local` (no sudo).
+Or clone and run the script directly: `bash vroot/vroot -python`.
+
+Requirements: Linux with unprivileged user namespaces, `bubblewrap`,
+`util-linux`, `squashfs-tools`, `curl`. `docker` only for Debian-based flags.
+
+## Minimal workflow
+
+    vroot build -python --json        # {"env":"/…/python-84d0423ed3.sqfs","cached":false}
+    vroot -python -- python3 -c 'print(1)'   # run one command, exit
+    vroot -python work                # persistent named sandbox
+    vroot save work out.vroot         # pack it into one portable image
+    vroot out.vroot -- cat /root/f    # boot that image anywhere
+
+## Machine interface
+
+- `--json` on `build`, `ls`, `envs`, `info`. JSON goes to stdout; logs go to stderr.
+- Exit status is meaningful: unknown flag → 1; `-- CMD` forwards CMD's exit status.
+- Env image names are content-addressed (`<slug>-<10-hex>.sqfs`), so the same
+  recipe set always resolves to the same file.
+- Concurrent builds/launches of the same env are serialised by a lock directory;
+  cache unpacking is atomic.
+- `vroot -bogus` prints one `err …` line to stderr and exits 1 (no shell noise).
+
+## Docs
+
+- [Agent contract (canonical)](https://github.com/gairxx/vroot/blob/main/docs/AGENTS.md): the full rules, JSON shapes, parallelism and fork semantics.
+- [Full plain-text reference](https://gairxx.github.io/vroot/llms-full.txt): everything in one file, no JavaScript.
+- [Human documentation](https://gairxx.github.io/vroot/docs.html): usage, options, persistence, FAQ.
+- [Flag catalog](https://gairxx.github.io/vroot/flags.html): all 42 environments with aliases and base.
+- [flags.json](https://gairxx.github.io/vroot/flags.json): the same catalog as machine-readable JSON.
+- [Recipes](https://gairxx.github.io/vroot/recipes.html): how flags map to recipes, and how to add your own.
+- [README](https://github.com/gairxx/vroot/blob/main/README.md): project overview and install matrix.
+
+## Optional
+
+- [AGENTS.md at this site](https://gairxx.github.io/vroot/AGENTS.md): short pointer file for agents that look for it at the root.
+- [Source](https://github.com/gairxx/vroot): the whole tool is one readable script.
