@@ -80,6 +80,25 @@ Drop a recipe in `$XDG_CONFIG_HOME/vroot/recipes/<name>.conf` (or
 override built-ins with the same name; a user recipe can also rename a built-in
 via `provides=`. See `docs/RECIPES.md`.
 
+## The project graph
+
+The repository describes itself in two tracked JSONL files, `graph/nodes.jsonl`
+and `graph/edges.jsonl`: commands, recipes, flags, docs sections and decisions,
+plus the relations between them. Query it before changing code, and update it in
+the same commit when you change what it describes.
+
+```console
+$ python3 tools/graphctl impact flag:python --json      # what else depends on this
+$ python3 tools/graphctl query --from recipe:node --depth 2 --dir both
+$ python3 tools/graphctl sql "select id from nodes where kind='recipe' order by id"
+$ python3 tools/graphctl ingest --write                 # regenerate after a change
+$ python3 tools/graphctl guard                          # fail if the graph is stale
+```
+
+Every command accepts `--json`, writes errors as `err: …` on stderr and exits
+non-zero on failure. Schema, cookbook and design notes: `docs/GRAPH.md`.
+Proposals, review and merge rules: `GOVERNANCE.md`.
+
 ## Rules an agent should respect
 
 1. **Never assume the host toolchain.** Ask for what you need with a flag.
@@ -91,6 +110,10 @@ via `provides=`. See `docs/RECIPES.md`.
 5. **Use `-offline`** when a task must not reach the network.
 6. **Prefer a checkpoint over a long-lived sandbox** for multi-step work you may
    have to retry.
+7. **Read the graph before editing, write it after.** `graphctl impact` tells you
+   what a change touches; `make graph-check` proves you did not leave it stale.
+8. **Propose, never self-merge.** Open a pull request with the evidence; a code
+   owner decides.
 
 ## Host contract
 
