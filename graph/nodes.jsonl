@@ -1,0 +1,278 @@
+{"attrs": {"path": "docs/decisions/0001-project-graph.md", "status": "accepted", "title": "ADR 0001: Track the project in a reviewable graph"}, "id": "adr:0001-project-graph", "kind": "adr"}
+{"attrs": {"path": "docs/decisions/0002-agent-first-interface.md", "status": "accepted", "title": "ADR 0002: Agent-first machine interface"}, "id": "adr:0002-agent-first-interface", "kind": "adr"}
+{"attrs": {"name": "alpine"}, "id": "base:alpine", "kind": "base"}
+{"attrs": {"name": "debian"}, "id": "base:debian", "kind": "base"}
+{"attrs": {"module": "vroot"}, "id": "command:banner", "kind": "command"}
+{"attrs": {"module": "vroot"}, "id": "command:build", "kind": "command"}
+{"attrs": {"module": "vroot"}, "id": "command:doctor", "kind": "command"}
+{"attrs": {"module": "vroot"}, "id": "command:envs", "kind": "command"}
+{"attrs": {"module": "vroot"}, "id": "command:filetype", "kind": "command"}
+{"attrs": {"module": "vroot"}, "id": "command:help", "kind": "command"}
+{"attrs": {"module": "vroot"}, "id": "command:info", "kind": "command"}
+{"attrs": {"module": "vroot"}, "id": "command:ls", "kind": "command"}
+{"attrs": {"module": "vroot"}, "id": "command:prune", "kind": "command"}
+{"attrs": {"module": "vroot"}, "id": "command:recipe", "kind": "command"}
+{"attrs": {"module": "vroot"}, "id": "command:rm", "kind": "command"}
+{"attrs": {"module": "vroot"}, "id": "command:run", "kind": "command"}
+{"attrs": {"module": "vroot"}, "id": "command:save", "kind": "command"}
+{"attrs": {"path": "README.md", "title": "vroot — a root shell in a sandbox"}, "id": "doc:README.md", "kind": "doc"}
+{"attrs": {"path": "docs/AGENTS.md", "title": "vroot for AI agents"}, "id": "doc:docs/AGENTS.md", "kind": "doc"}
+{"attrs": {"path": "docs/BUILDING.md", "title": "Building your own environment"}, "id": "doc:docs/BUILDING.md", "kind": "doc"}
+{"attrs": {"path": "docs/GRAPH.md", "title": "The vroot project graph"}, "id": "doc:docs/GRAPH.md", "kind": "doc"}
+{"attrs": {"path": "docs/LANGUAGES.md", "title": "Flag catalog"}, "id": "doc:docs/LANGUAGES.md", "kind": "doc"}
+{"attrs": {"path": "docs/RECIPES.md", "title": "Recipe reference"}, "id": "doc:docs/RECIPES.md", "kind": "doc"}
+{"attrs": {"name": ".net"}, "id": "flag:.net", "kind": "flag"}
+{"attrs": {"name": "alpine"}, "id": "flag:alpine", "kind": "flag"}
+{"attrs": {"name": "asm"}, "id": "flag:asm", "kind": "flag"}
+{"attrs": {"name": "base"}, "id": "flag:base", "kind": "flag"}
+{"attrs": {"name": "bun"}, "id": "flag:bun", "kind": "flag"}
+{"attrs": {"name": "c#"}, "id": "flag:c#", "kind": "flag"}
+{"attrs": {"name": "cabal"}, "id": "flag:cabal", "kind": "flag"}
+{"attrs": {"name": "cargo"}, "id": "flag:cargo", "kind": "flag"}
+{"attrs": {"name": "cc"}, "id": "flag:cc", "kind": "flag"}
+{"attrs": {"name": "clang"}, "id": "flag:clang", "kind": "flag"}
+{"attrs": {"name": "clj"}, "id": "flag:clj", "kind": "flag"}
+{"attrs": {"name": "cljs"}, "id": "flag:cljs", "kind": "flag"}
+{"attrs": {"name": "clojure"}, "id": "flag:clojure", "kind": "flag"}
+{"attrs": {"name": "cmake"}, "id": "flag:cmake", "kind": "flag"}
+{"attrs": {"name": "cpan"}, "id": "flag:cpan", "kind": "flag"}
+{"attrs": {"name": "crystal"}, "id": "flag:crystal", "kind": "flag"}
+{"attrs": {"name": "csharp"}, "id": "flag:csharp", "kind": "flag"}
+{"attrs": {"name": "curl"}, "id": "flag:curl", "kind": "flag"}
+{"attrs": {"name": "d"}, "id": "flag:d", "kind": "flag"}
+{"attrs": {"name": "deb"}, "id": "flag:deb", "kind": "flag"}
+{"attrs": {"name": "debian"}, "id": "flag:debian", "kind": "flag"}
+{"attrs": {"name": "deno"}, "id": "flag:deno", "kind": "flag"}
+{"attrs": {"name": "dlang"}, "id": "flag:dlang", "kind": "flag"}
+{"attrs": {"name": "dmd"}, "id": "flag:dmd", "kind": "flag"}
+{"attrs": {"name": "dotnet"}, "id": "flag:dotnet", "kind": "flag"}
+{"attrs": {"name": "dotnet8"}, "id": "flag:dotnet8", "kind": "flag"}
+{"attrs": {"name": "dune"}, "id": "flag:dune", "kind": "flag"}
+{"attrs": {"name": "editor"}, "id": "flag:editor", "kind": "flag"}
+{"attrs": {"name": "elixir"}, "id": "flag:elixir", "kind": "flag"}
+{"attrs": {"name": "erl"}, "id": "flag:erl", "kind": "flag"}
+{"attrs": {"name": "erlang"}, "id": "flag:erlang", "kind": "flag"}
+{"attrs": {"name": "escript"}, "id": "flag:escript", "kind": "flag"}
+{"attrs": {"name": "f#"}, "id": "flag:f#", "kind": "flag"}
+{"attrs": {"name": "fortran"}, "id": "flag:fortran", "kind": "flag"}
+{"attrs": {"name": "fsc"}, "id": "flag:fsc", "kind": "flag"}
+{"attrs": {"name": "fsharp"}, "id": "flag:fsharp", "kind": "flag"}
+{"attrs": {"name": "g++"}, "id": "flag:g++", "kind": "flag"}
+{"attrs": {"name": "gcc"}, "id": "flag:gcc", "kind": "flag"}
+{"attrs": {"name": "gem"}, "id": "flag:gem", "kind": "flag"}
+{"attrs": {"name": "gfortran"}, "id": "flag:gfortran", "kind": "flag"}
+{"attrs": {"name": "gh"}, "id": "flag:gh", "kind": "flag"}
+{"attrs": {"name": "ghc"}, "id": "flag:ghc", "kind": "flag"}
+{"attrs": {"name": "git"}, "id": "flag:git", "kind": "flag"}
+{"attrs": {"name": "go"}, "id": "flag:go", "kind": "flag"}
+{"attrs": {"name": "golang"}, "id": "flag:golang", "kind": "flag"}
+{"attrs": {"name": "groovy"}, "id": "flag:groovy", "kind": "flag"}
+{"attrs": {"name": "haskell"}, "id": "flag:haskell", "kind": "flag"}
+{"attrs": {"name": "http"}, "id": "flag:http", "kind": "flag"}
+{"attrs": {"name": "iex"}, "id": "flag:iex", "kind": "flag"}
+{"attrs": {"name": "irb"}, "id": "flag:irb", "kind": "flag"}
+{"attrs": {"name": "java"}, "id": "flag:java", "kind": "flag"}
+{"attrs": {"name": "javac"}, "id": "flag:javac", "kind": "flag"}
+{"attrs": {"name": "javascript"}, "id": "flag:javascript", "kind": "flag"}
+{"attrs": {"name": "jdk"}, "id": "flag:jdk", "kind": "flag"}
+{"attrs": {"name": "jre"}, "id": "flag:jre", "kind": "flag"}
+{"attrs": {"name": "js"}, "id": "flag:js", "kind": "flag"}
+{"attrs": {"name": "julia"}, "id": "flag:julia", "kind": "flag"}
+{"attrs": {"name": "kotlin"}, "id": "flag:kotlin", "kind": "flag"}
+{"attrs": {"name": "kotlinc"}, "id": "flag:kotlinc", "kind": "flag"}
+{"attrs": {"name": "ldc"}, "id": "flag:ldc", "kind": "flag"}
+{"attrs": {"name": "llvm"}, "id": "flag:llvm", "kind": "flag"}
+{"attrs": {"name": "lua"}, "id": "flag:lua", "kind": "flag"}
+{"attrs": {"name": "lua5"}, "id": "flag:lua5", "kind": "flag"}
+{"attrs": {"name": "lua5.4"}, "id": "flag:lua5.4", "kind": "flag"}
+{"attrs": {"name": "luajit"}, "id": "flag:luajit", "kind": "flag"}
+{"attrs": {"name": "mariadb"}, "id": "flag:mariadb", "kind": "flag"}
+{"attrs": {"name": "mix"}, "id": "flag:mix", "kind": "flag"}
+{"attrs": {"name": "mysql"}, "id": "flag:mysql", "kind": "flag"}
+{"attrs": {"name": "nasm"}, "id": "flag:nasm", "kind": "flag"}
+{"attrs": {"name": "nim"}, "id": "flag:nim", "kind": "flag"}
+{"attrs": {"name": "nimble"}, "id": "flag:nimble", "kind": "flag"}
+{"attrs": {"name": "node"}, "id": "flag:node", "kind": "flag"}
+{"attrs": {"name": "nodejs"}, "id": "flag:nodejs", "kind": "flag"}
+{"attrs": {"name": "npm"}, "id": "flag:npm", "kind": "flag"}
+{"attrs": {"name": "ocaml"}, "id": "flag:ocaml", "kind": "flag"}
+{"attrs": {"name": "opam"}, "id": "flag:opam", "kind": "flag"}
+{"attrs": {"name": "openssh"}, "id": "flag:openssh", "kind": "flag"}
+{"attrs": {"name": "perl"}, "id": "flag:perl", "kind": "flag"}
+{"attrs": {"name": "php"}, "id": "flag:php", "kind": "flag"}
+{"attrs": {"name": "php8"}, "id": "flag:php8", "kind": "flag"}
+{"attrs": {"name": "postgres"}, "id": "flag:postgres", "kind": "flag"}
+{"attrs": {"name": "postgresql"}, "id": "flag:postgresql", "kind": "flag"}
+{"attrs": {"name": "psql"}, "id": "flag:psql", "kind": "flag"}
+{"attrs": {"name": "py"}, "id": "flag:py", "kind": "flag"}
+{"attrs": {"name": "python"}, "id": "flag:python", "kind": "flag"}
+{"attrs": {"name": "python3"}, "id": "flag:python3", "kind": "flag"}
+{"attrs": {"name": "r"}, "id": "flag:r", "kind": "flag"}
+{"attrs": {"name": "rlang"}, "id": "flag:rlang", "kind": "flag"}
+{"attrs": {"name": "rscript"}, "id": "flag:rscript", "kind": "flag"}
+{"attrs": {"name": "ruby"}, "id": "flag:ruby", "kind": "flag"}
+{"attrs": {"name": "rust"}, "id": "flag:rust", "kind": "flag"}
+{"attrs": {"name": "rustc"}, "id": "flag:rustc", "kind": "flag"}
+{"attrs": {"name": "scala"}, "id": "flag:scala", "kind": "flag"}
+{"attrs": {"name": "scala3"}, "id": "flag:scala3", "kind": "flag"}
+{"attrs": {"name": "shards"}, "id": "flag:shards", "kind": "flag"}
+{"attrs": {"name": "sqlite"}, "id": "flag:sqlite", "kind": "flag"}
+{"attrs": {"name": "sqlite3"}, "id": "flag:sqlite3", "kind": "flag"}
+{"attrs": {"name": "ssh"}, "id": "flag:ssh", "kind": "flag"}
+{"attrs": {"name": "sshd"}, "id": "flag:sshd", "kind": "flag"}
+{"attrs": {"name": "stack"}, "id": "flag:stack", "kind": "flag"}
+{"attrs": {"name": "swift"}, "id": "flag:swift", "kind": "flag"}
+{"attrs": {"name": "ts"}, "id": "flag:ts", "kind": "flag"}
+{"attrs": {"name": "typescript"}, "id": "flag:typescript", "kind": "flag"}
+{"attrs": {"name": "vi"}, "id": "flag:vi", "kind": "flag"}
+{"attrs": {"name": "vim"}, "id": "flag:vim", "kind": "flag"}
+{"attrs": {"name": "wget"}, "id": "flag:wget", "kind": "flag"}
+{"attrs": {"name": "zig"}, "id": "flag:zig", "kind": "flag"}
+{"attrs": {"module": "vroot"}, "id": "function:alpine_arch", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:alpine_url", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:build_env", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:build_env_docker", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:build_recipe_index", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:die", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:emit_env", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:ensure_base", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:ensure_cache", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:ensure_dirs", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:fetch", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:fetch_sha256", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:fsize", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:fsize_bytes", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:index_lookup", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:json_bool", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:json_str", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:launch", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:load_recipes", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:log", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:main", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:meta_get", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:meta_set", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:need_cmd", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:ok", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:parse_args", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:parse_recipe", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:pkg_hint", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:rall", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:recipe_file_for", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:recipe_index_stale", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:rget", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:rm_instance", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:run_in_root", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:safe_recipe_flag", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:spawn_native", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:valid_name", "kind": "function"}
+{"attrs": {"module": "vroot"}, "id": "function:warn", "kind": "function"}
+{"attrs": {"language": "bash", "lines": "1093", "path": "vroot", "version": "2.2.1"}, "id": "module:vroot", "kind": "module"}
+{"attrs": {"base": "alpine", "description": "Bare Alpine root shell (default)", "file": "recipes/base.conf", "flag": "base", "packages": ""}, "id": "recipe:base", "kind": "recipe"}
+{"attrs": {"base": "debian", "description": "Bun runtime (installed from bun.sh)", "file": "recipes/bun.conf", "flag": "bun", "packages": "curl unzip ca-certificates"}, "id": "recipe:bun", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "Clang / LLVM C and C++ toolchain", "file": "recipes/clang.conf", "flag": "clang", "packages": "clang llvm lld compiler-rt"}, "id": "recipe:clang", "kind": "recipe"}
+{"attrs": {"base": "debian", "description": "Clojure (Debian package)", "file": "recipes/clojure.conf", "flag": "clojure", "packages": "clojure default-jdk-headless rlwrap"}, "id": "recipe:clojure", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "CMake build system", "file": "recipes/cmake.conf", "flag": "cmake", "packages": "cmake make"}, "id": "recipe:cmake", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "Crystal language", "file": "recipes/crystal.conf", "flag": "crystal", "packages": "crystal shards"}, "id": "recipe:crystal", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "curl and wget with CA certs", "file": "recipes/curl.conf", "flag": "curl", "packages": "curl wget ca-certificates"}, "id": "recipe:curl", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "D language (LDC + dub)", "file": "recipes/d.conf", "flag": "d", "packages": "ldc dub"}, "id": "recipe:d", "kind": "recipe"}
+{"attrs": {"base": "debian", "description": "Bare Debian root shell (glibc)", "file": "recipes/debian.conf", "flag": "debian", "packages": ""}, "id": "recipe:debian", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "Deno (with built-in TypeScript)", "file": "recipes/deno.conf", "flag": "deno", "packages": "deno"}, "id": "recipe:deno", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": ".NET 8 SDK (C#, F#, VB)", "file": "recipes/dotnet.conf", "flag": "dotnet", "packages": "dotnet8-sdk dotnet8-runtime"}, "id": "recipe:dotnet", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "Elixir on Erlang/OTP", "file": "recipes/elixir.conf", "flag": "elixir", "packages": "elixir erlang erlang-dev"}, "id": "recipe:elixir", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "Erlang/OTP", "file": "recipes/erlang.conf", "flag": "erlang", "packages": "erlang erlang-dev"}, "id": "recipe:erlang", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "F# on the .NET 8 SDK", "file": "recipes/fsharp.conf", "flag": "fsharp", "packages": "dotnet8-sdk"}, "id": "recipe:fsharp", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "GCC C and C++ toolchain", "file": "recipes/gcc.conf", "flag": "gcc", "packages": "gcc g++ make musl-dev"}, "id": "recipe:gcc", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "GNU Fortran compiler", "file": "recipes/gfortran.conf", "flag": "gfortran", "packages": "gfortran gcc make"}, "id": "recipe:gfortran", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "Git with SSH client", "file": "recipes/git.conf", "flag": "git", "packages": "git openssh-client"}, "id": "recipe:git", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "Go toolchain", "file": "recipes/go.conf", "flag": "go", "packages": "go"}, "id": "recipe:go", "kind": "recipe"}
+{"attrs": {"base": "debian", "description": "Apache Groovy (Debian package)", "file": "recipes/groovy.conf", "flag": "groovy", "packages": "groovy default-jdk-headless"}, "id": "recipe:groovy", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "GHC and Cabal", "file": "recipes/haskell.conf", "flag": "haskell", "packages": "ghc cabal"}, "id": "recipe:haskell", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "OpenJDK 17", "file": "recipes/java.conf", "flag": "java", "packages": "openjdk17-jdk"}, "id": "recipe:java", "kind": "recipe"}
+{"attrs": {"base": "debian", "description": "Julia (installed from julialang.org)", "file": "recipes/julia.conf", "flag": "julia", "packages": "curl ca-certificates"}, "id": "recipe:julia", "kind": "recipe"}
+{"attrs": {"base": "debian", "description": "Kotlin compiler (from JetBrains releases)", "file": "recipes/kotlin.conf", "flag": "kotlin", "packages": "default-jdk-headless unzip curl ca-certificates"}, "id": "recipe:kotlin", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "Lua 5.4 with LuaRocks", "file": "recipes/lua.conf", "flag": "lua", "packages": "lua5.4 lua5.4-dev luarocks"}, "id": "recipe:lua", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "MariaDB server and client", "file": "recipes/mysql.conf", "flag": "mysql", "packages": "mariadb mariadb-client"}, "id": "recipe:mysql", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "NASM assembler", "file": "recipes/nasm.conf", "flag": "nasm", "packages": "nasm binutils"}, "id": "recipe:nasm", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "Nim compiler", "file": "recipes/nim.conf", "flag": "nim", "packages": "nim nimble"}, "id": "recipe:nim", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "Node.js and npm", "file": "recipes/node.conf", "flag": "node", "packages": "nodejs npm"}, "id": "recipe:node", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "OCaml with opam and dune", "file": "recipes/ocaml.conf", "flag": "ocaml", "packages": "ocaml ocaml-dev opam dune"}, "id": "recipe:ocaml", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "OpenSSH client and server", "file": "recipes/openssh.conf", "flag": "openssh", "packages": "openssh openssh-server"}, "id": "recipe:openssh", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "Perl", "file": "recipes/perl.conf", "flag": "perl", "packages": "perl perl-dev make"}, "id": "recipe:perl", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "PHP 8.3 with common extensions", "file": "recipes/php.conf", "flag": "php", "packages": "php83 php83-phar php83-json php83-openssl php83-mbstring php83-curl php83-pdo php83-pdo_sqlite php83-pdo_mysql php83-pdo_pgsql php83-sqlite3 php83-tokenizer php83-dom php83-xml php83-xmlwriter php83-session php83-ctype php83-fileinfo php83-iconv"}, "id": "recipe:php", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "PostgreSQL server and client", "file": "recipes/postgres.conf", "flag": "postgres", "packages": "postgresql16 postgresql16-client"}, "id": "recipe:postgres", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "Python 3 with pip", "file": "recipes/python.conf", "flag": "python", "packages": "python3 py3-pip"}, "id": "recipe:python", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "R statistical language", "file": "recipes/r.conf", "flag": "r", "packages": "R R-dev"}, "id": "recipe:r", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "Ruby with RubyGems", "file": "recipes/ruby.conf", "flag": "ruby", "packages": "ruby ruby-dev build-base"}, "id": "recipe:ruby", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "Rust compiler and Cargo", "file": "recipes/rust.conf", "flag": "rust", "packages": "rust cargo"}, "id": "recipe:rust", "kind": "recipe"}
+{"attrs": {"base": "debian", "description": "Scala 3 (from scala-lang releases)", "file": "recipes/scala.conf", "flag": "scala", "packages": "default-jdk unzip curl ca-certificates"}, "id": "recipe:scala", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "SQLite CLI", "file": "recipes/sqlite.conf", "flag": "sqlite", "packages": "sqlite"}, "id": "recipe:sqlite", "kind": "recipe"}
+{"attrs": {"base": "debian", "description": "Swift toolchain (from swift.org)", "file": "recipes/swift.conf", "flag": "swift", "packages": "curl ca-certificates libncurses6 libpython3-dev libcurl4 libxml2 libedit2 binutils"}, "id": "recipe:swift", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "Vim and Neovim", "file": "recipes/vim.conf", "flag": "vim", "packages": "vim neovim"}, "id": "recipe:vim", "kind": "recipe"}
+{"attrs": {"base": "alpine", "description": "Zig compiler", "file": "recipes/zig.conf", "flag": "zig", "packages": "zig"}, "id": "recipe:zig", "kind": "recipe"}
+{"attrs": {"name": "vroot"}, "id": "repo:vroot", "kind": "repo"}
+{"attrs": {"doc": "README.md", "title": "Arch"}, "id": "section:README.md#arch", "kind": "section"}
+{"attrs": {"doc": "README.md", "title": "Build your own environment"}, "id": "section:README.md#build-your-own-environment", "kind": "section"}
+{"attrs": {"doc": "README.md", "title": "Built for agents"}, "id": "section:README.md#built-for-agents", "kind": "section"}
+{"attrs": {"doc": "README.md", "title": "Debian / Ubuntu"}, "id": "section:README.md#debian-ubuntu", "kind": "section"}
+{"attrs": {"doc": "README.md", "title": "Documentation"}, "id": "section:README.md#documentation", "kind": "section"}
+{"attrs": {"doc": "README.md", "title": "FAQ"}, "id": "section:README.md#faq", "kind": "section"}
+{"attrs": {"doc": "README.md", "title": "Fedora"}, "id": "section:README.md#fedora", "kind": "section"}
+{"attrs": {"doc": "README.md", "title": "Flags"}, "id": "section:README.md#flags", "kind": "section"}
+{"attrs": {"doc": "README.md", "title": "How it compares"}, "id": "section:README.md#how-it-compares", "kind": "section"}
+{"attrs": {"doc": "README.md", "title": "How it works"}, "id": "section:README.md#how-it-works", "kind": "section"}
+{"attrs": {"doc": "README.md", "title": "Install"}, "id": "section:README.md#install", "kind": "section"}
+{"attrs": {"doc": "README.md", "title": "Keywords"}, "id": "section:README.md#keywords", "kind": "section"}
+{"attrs": {"doc": "README.md", "title": "License"}, "id": "section:README.md#license", "kind": "section"}
+{"attrs": {"doc": "README.md", "title": "Managing sandboxes"}, "id": "section:README.md#managing-sandboxes", "kind": "section"}
+{"attrs": {"doc": "README.md", "title": "Options"}, "id": "section:README.md#options", "kind": "section"}
+{"attrs": {"doc": "README.md", "title": "Quick start"}, "id": "section:README.md#quick-start", "kind": "section"}
+{"attrs": {"doc": "README.md", "title": "Requirements"}, "id": "section:README.md#requirements", "kind": "section"}
+{"attrs": {"doc": "README.md", "title": "Table of contents"}, "id": "section:README.md#table-of-contents", "kind": "section"}
+{"attrs": {"doc": "README.md", "title": "Why vroot"}, "id": "section:README.md#why-vroot", "kind": "section"}
+{"attrs": {"doc": "docs/AGENTS.md", "title": "Checkpoints and forks"}, "id": "section:docs/AGENTS.md#checkpoints-and-forks", "kind": "section"}
+{"attrs": {"doc": "docs/AGENTS.md", "title": "Host contract"}, "id": "section:docs/AGENTS.md#host-contract", "kind": "section"}
+{"attrs": {"doc": "docs/AGENTS.md", "title": "Machine-readable output"}, "id": "section:docs/AGENTS.md#machine-readable-output", "kind": "section"}
+{"attrs": {"doc": "docs/AGENTS.md", "title": "Parallel agents are safe"}, "id": "section:docs/AGENTS.md#parallel-agents-are-safe", "kind": "section"}
+{"attrs": {"doc": "docs/AGENTS.md", "title": "Recipes: give the agent more tools, not more constraints"}, "id": "section:docs/AGENTS.md#recipes-give-the-agent-more-tools-not-more-constraints", "kind": "section"}
+{"attrs": {"doc": "docs/AGENTS.md", "title": "Rules an agent should respect"}, "id": "section:docs/AGENTS.md#rules-an-agent-should-respect", "kind": "section"}
+{"attrs": {"doc": "docs/AGENTS.md", "title": "The model"}, "id": "section:docs/AGENTS.md#the-model", "kind": "section"}
+{"attrs": {"doc": "docs/AGENTS.md", "title": "The project graph"}, "id": "section:docs/AGENTS.md#the-project-graph", "kind": "section"}
+{"attrs": {"doc": "docs/BUILDING.md", "title": "1. Create a recipe"}, "id": "section:docs/BUILDING.md#1-create-a-recipe", "kind": "section"}
+{"attrs": {"doc": "docs/BUILDING.md", "title": "2. Fields"}, "id": "section:docs/BUILDING.md#2-fields", "kind": "section"}
+{"attrs": {"doc": "docs/BUILDING.md", "title": "3. Examples"}, "id": "section:docs/BUILDING.md#3-examples", "kind": "section"}
+{"attrs": {"doc": "docs/BUILDING.md", "title": "4. Test your recipe"}, "id": "section:docs/BUILDING.md#4-test-your-recipe", "kind": "section"}
+{"attrs": {"doc": "docs/BUILDING.md", "title": "5. How recipes combine"}, "id": "section:docs/BUILDING.md#5-how-recipes-combine", "kind": "section"}
+{"attrs": {"doc": "docs/BUILDING.md", "title": "6. Sharing"}, "id": "section:docs/BUILDING.md#6-sharing", "kind": "section"}
+{"attrs": {"doc": "docs/BUILDING.md", "title": "A compiler that needs extra build flags"}, "id": "section:docs/BUILDING.md#a-compiler-that-needs-extra-build-flags", "kind": "section"}
+{"attrs": {"doc": "docs/BUILDING.md", "title": "A tool available as a package"}, "id": "section:docs/BUILDING.md#a-tool-available-as-a-package", "kind": "section"}
+{"attrs": {"doc": "docs/BUILDING.md", "title": "Choosing the base"}, "id": "section:docs/BUILDING.md#choosing-the-base", "kind": "section"}
+{"attrs": {"doc": "docs/BUILDING.md", "title": "Installing from an upstream release"}, "id": "section:docs/BUILDING.md#installing-from-an-upstream-release", "kind": "section"}
+{"attrs": {"doc": "docs/GRAPH.md", "title": "Adding a recipe end to end"}, "id": "section:docs/GRAPH.md#adding-a-recipe-end-to-end", "kind": "section"}
+{"attrs": {"doc": "docs/GRAPH.md", "title": "Commands"}, "id": "section:docs/GRAPH.md#commands", "kind": "section"}
+{"attrs": {"doc": "docs/GRAPH.md", "title": "Cookbook"}, "id": "section:docs/GRAPH.md#cookbook", "kind": "section"}
+{"attrs": {"doc": "docs/GRAPH.md", "title": "Design notes"}, "id": "section:docs/GRAPH.md#design-notes", "kind": "section"}
+{"attrs": {"doc": "docs/GRAPH.md", "title": "Drift and review"}, "id": "section:docs/GRAPH.md#drift-and-review", "kind": "section"}
+{"attrs": {"doc": "docs/GRAPH.md", "title": "Files"}, "id": "section:docs/GRAPH.md#files", "kind": "section"}
+{"attrs": {"doc": "docs/GRAPH.md", "title": "Node kinds"}, "id": "section:docs/GRAPH.md#node-kinds", "kind": "section"}
+{"attrs": {"doc": "docs/GRAPH.md", "title": "Relations"}, "id": "section:docs/GRAPH.md#relations", "kind": "section"}
+{"attrs": {"doc": "docs/LANGUAGES.md", "title": "C / C++ and systems"}, "id": "section:docs/LANGUAGES.md#c-c-and-systems", "kind": "section"}
+{"attrs": {"doc": "docs/LANGUAGES.md", "title": "Data, servers and tools"}, "id": "section:docs/LANGUAGES.md#data-servers-and-tools", "kind": "section"}
+{"attrs": {"doc": "docs/LANGUAGES.md", "title": "JVM"}, "id": "section:docs/LANGUAGES.md#jvm", "kind": "section"}
+{"attrs": {"doc": "docs/LANGUAGES.md", "title": "Languages and runtimes"}, "id": "section:docs/LANGUAGES.md#languages-and-runtimes", "kind": "section"}
+{"attrs": {"doc": "docs/LANGUAGES.md", "title": ".NET"}, "id": "section:docs/LANGUAGES.md#net", "kind": "section"}
+{"attrs": {"doc": "docs/LANGUAGES.md", "title": "Notes"}, "id": "section:docs/LANGUAGES.md#notes", "kind": "section"}
+{"attrs": {"doc": "docs/RECIPES.md", "title": "`base` (optional, default `alpine`)"}, "id": "section:docs/RECIPES.md#base-optional-default-alpine", "kind": "section"}
+{"attrs": {"doc": "docs/RECIPES.md", "title": "`description` (optional)"}, "id": "section:docs/RECIPES.md#description-optional", "kind": "section"}
+{"attrs": {"doc": "docs/RECIPES.md", "title": "`docs` (optional)"}, "id": "section:docs/RECIPES.md#docs-optional", "kind": "section"}
+{"attrs": {"doc": "docs/RECIPES.md", "title": "`env` (optional)"}, "id": "section:docs/RECIPES.md#env-optional", "kind": "section"}
+{"attrs": {"doc": "docs/RECIPES.md", "title": "Environment internals"}, "id": "section:docs/RECIPES.md#environment-internals", "kind": "section"}
+{"attrs": {"doc": "docs/RECIPES.md", "title": "Fields"}, "id": "section:docs/RECIPES.md#fields", "kind": "section"}
+{"attrs": {"doc": "docs/RECIPES.md", "title": "Locations and lookup"}, "id": "section:docs/RECIPES.md#locations-and-lookup", "kind": "section"}
+{"attrs": {"doc": "docs/RECIPES.md", "title": "Merging multiple flags"}, "id": "section:docs/RECIPES.md#merging-multiple-flags", "kind": "section"}
+{"attrs": {"doc": "docs/RECIPES.md", "title": "`name` (required)"}, "id": "section:docs/RECIPES.md#name-required", "kind": "section"}
+{"attrs": {"doc": "docs/RECIPES.md", "title": "`packages` (optional, repeatable)"}, "id": "section:docs/RECIPES.md#packages-optional-repeatable", "kind": "section"}
+{"attrs": {"doc": "docs/RECIPES.md", "title": "`path` (optional)"}, "id": "section:docs/RECIPES.md#path-optional", "kind": "section"}
+{"attrs": {"doc": "docs/RECIPES.md", "title": "`provides` (optional)"}, "id": "section:docs/RECIPES.md#provides-optional", "kind": "section"}
+{"attrs": {"doc": "docs/RECIPES.md", "title": "`setup` (optional, repeatable)"}, "id": "section:docs/RECIPES.md#setup-optional-repeatable", "kind": "section"}
+{"attrs": {"doc": "docs/RECIPES.md", "title": "Tips"}, "id": "section:docs/RECIPES.md#tips", "kind": "section"}
+{"attrs": {"doc": "docs/RECIPES.md", "title": "`verify` (optional, repeatable)"}, "id": "section:docs/RECIPES.md#verify-optional-repeatable", "kind": "section"}
