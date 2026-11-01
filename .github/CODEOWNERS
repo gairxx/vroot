@@ -1,0 +1,13 @@
+# Review ownership. CODEOWNERS only takes effect for accounts with write
+# access, and is enforced only when branch protection enables
+# "Require review from Code Owners" (see GOVERNANCE.md).
+
+*                       @gairxx
+
+# The isolation core, the CLI contract and the graph schema need extra care.
+/vroot                  @gairxx
+/graph/                 @gairxx
+/tools/graphctl         @gairxx
+/GOVERNANCE.md          @gairxx
+/docs/decisions/        @gairxx
+/.github/               @gairxx
