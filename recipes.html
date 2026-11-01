@@ -17,6 +17,7 @@
     <a href="docs.html">Docs</a>
     <a href="flags.html">Flags</a>
     <a href="recipes.html" class="active">Recipes</a>
+    <a href="agents.html">Agents</a>
     <a href="https://github.com/gairxx/vroot" target="_blank" rel="noopener">GitHub</a>
   </div>
 </nav>
@@ -40,7 +41,7 @@
     <h2><span class="hash">#</span> Format</h2>
     <pre class="code-block"><code>name = mytool            # required, usually the file name
 provides = mytool,mt     # extra flags/aliases (comma-separated)
-base = alpine            # alpiner | debian
+base = alpine            # alpine | debian
 packages = mytool        # space-separated pkgs; repeatable
 setup =                  # shell snippet run as root during build; repeatable
 env = KEY=value          # comma-separated exports
