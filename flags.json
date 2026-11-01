@@ -1,0 +1,355 @@
+[
+  {
+    "flag": "base",
+    "aliases": [
+      "alpine"
+    ],
+    "base": "alpine",
+    "description": "Bare Alpine root shell (default)"
+  },
+  {
+    "flag": "bun",
+    "aliases": [],
+    "base": "debian",
+    "description": "Bun runtime (installed from bun.sh)"
+  },
+  {
+    "flag": "clang",
+    "aliases": [
+      "llvm"
+    ],
+    "base": "alpine",
+    "description": "Clang / LLVM C and C++ toolchain"
+  },
+  {
+    "flag": "clojure",
+    "aliases": [
+      "clj",
+      "cljs"
+    ],
+    "base": "debian",
+    "description": "Clojure (Debian package)"
+  },
+  {
+    "flag": "cmake",
+    "aliases": [],
+    "base": "alpine",
+    "description": "CMake build system"
+  },
+  {
+    "flag": "crystal",
+    "aliases": [
+      "shards"
+    ],
+    "base": "alpine",
+    "description": "Crystal language"
+  },
+  {
+    "flag": "curl",
+    "aliases": [
+      "wget",
+      "http"
+    ],
+    "base": "alpine",
+    "description": "curl and wget with CA certs"
+  },
+  {
+    "flag": "d",
+    "aliases": [
+      "dmd",
+      "ldc",
+      "dlang"
+    ],
+    "base": "alpine",
+    "description": "D language (LDC + dub)"
+  },
+  {
+    "flag": "debian",
+    "aliases": [
+      "deb"
+    ],
+    "base": "debian",
+    "description": "Bare Debian root shell (glibc)"
+  },
+  {
+    "flag": "deno",
+    "aliases": [
+      "typescript",
+      "ts"
+    ],
+    "base": "alpine",
+    "description": "Deno (with built-in TypeScript)"
+  },
+  {
+    "flag": "dotnet",
+    "aliases": [
+      ".net",
+      "dotnet8",
+      "csharp",
+      "c#"
+    ],
+    "base": "alpine",
+    "description": ".NET 8 SDK (C#, F#, VB)"
+  },
+  {
+    "flag": "elixir",
+    "aliases": [
+      "mix",
+      "iex"
+    ],
+    "base": "alpine",
+    "description": "Elixir on Erlang/OTP"
+  },
+  {
+    "flag": "erlang",
+    "aliases": [
+      "erl",
+      "escript"
+    ],
+    "base": "alpine",
+    "description": "Erlang/OTP"
+  },
+  {
+    "flag": "fsharp",
+    "aliases": [
+      "f#",
+      "fsc"
+    ],
+    "base": "alpine",
+    "description": "F# on the .NET 8 SDK"
+  },
+  {
+    "flag": "gcc",
+    "aliases": [
+      "cc",
+      "g++"
+    ],
+    "base": "alpine",
+    "description": "GCC C and C++ toolchain"
+  },
+  {
+    "flag": "gfortran",
+    "aliases": [
+      "fortran"
+    ],
+    "base": "alpine",
+    "description": "GNU Fortran compiler"
+  },
+  {
+    "flag": "git",
+    "aliases": [
+      "gh"
+    ],
+    "base": "alpine",
+    "description": "Git with SSH client"
+  },
+  {
+    "flag": "go",
+    "aliases": [
+      "golang"
+    ],
+    "base": "alpine",
+    "description": "Go toolchain"
+  },
+  {
+    "flag": "groovy",
+    "aliases": [],
+    "base": "debian",
+    "description": "Apache Groovy (Debian package)"
+  },
+  {
+    "flag": "haskell",
+    "aliases": [
+      "ghc",
+      "cabal",
+      "stack"
+    ],
+    "base": "alpine",
+    "description": "GHC and Cabal"
+  },
+  {
+    "flag": "java",
+    "aliases": [
+      "jdk",
+      "jre",
+      "javac"
+    ],
+    "base": "alpine",
+    "description": "OpenJDK 17"
+  },
+  {
+    "flag": "julia",
+    "aliases": [],
+    "base": "debian",
+    "description": "Julia (installed from julialang.org)"
+  },
+  {
+    "flag": "kotlin",
+    "aliases": [
+      "kotlinc"
+    ],
+    "base": "debian",
+    "description": "Kotlin compiler (from JetBrains releases)"
+  },
+  {
+    "flag": "lua",
+    "aliases": [
+      "lua5",
+      "lua5.4",
+      "luajit"
+    ],
+    "base": "alpine",
+    "description": "Lua 5.4 with LuaRocks"
+  },
+  {
+    "flag": "mysql",
+    "aliases": [
+      "mariadb"
+    ],
+    "base": "alpine",
+    "description": "MariaDB server and client"
+  },
+  {
+    "flag": "nasm",
+    "aliases": [
+      "asm"
+    ],
+    "base": "alpine",
+    "description": "NASM assembler"
+  },
+  {
+    "flag": "nim",
+    "aliases": [
+      "nimble"
+    ],
+    "base": "alpine",
+    "description": "Nim compiler"
+  },
+  {
+    "flag": "node",
+    "aliases": [
+      "nodejs",
+      "npm",
+      "javascript",
+      "js"
+    ],
+    "base": "alpine",
+    "description": "Node.js and npm"
+  },
+  {
+    "flag": "ocaml",
+    "aliases": [
+      "opam",
+      "dune"
+    ],
+    "base": "alpine",
+    "description": "OCaml with opam and dune"
+  },
+  {
+    "flag": "openssh",
+    "aliases": [
+      "ssh",
+      "sshd"
+    ],
+    "base": "alpine",
+    "description": "OpenSSH client and server"
+  },
+  {
+    "flag": "perl",
+    "aliases": [
+      "cpan"
+    ],
+    "base": "alpine",
+    "description": "Perl"
+  },
+  {
+    "flag": "php",
+    "aliases": [
+      "php8"
+    ],
+    "base": "alpine",
+    "description": "PHP 8.3 with common extensions"
+  },
+  {
+    "flag": "postgres",
+    "aliases": [
+      "postgresql",
+      "psql"
+    ],
+    "base": "alpine",
+    "description": "PostgreSQL server and client"
+  },
+  {
+    "flag": "python",
+    "aliases": [
+      "python3",
+      "py"
+    ],
+    "base": "alpine",
+    "description": "Python 3 with pip"
+  },
+  {
+    "flag": "r",
+    "aliases": [
+      "rlang",
+      "rscript"
+    ],
+    "base": "alpine",
+    "description": "R statistical language"
+  },
+  {
+    "flag": "ruby",
+    "aliases": [
+      "gem",
+      "irb"
+    ],
+    "base": "alpine",
+    "description": "Ruby with RubyGems"
+  },
+  {
+    "flag": "rust",
+    "aliases": [
+      "cargo",
+      "rustc"
+    ],
+    "base": "alpine",
+    "description": "Rust compiler and Cargo"
+  },
+  {
+    "flag": "scala",
+    "aliases": [
+      "scala3"
+    ],
+    "base": "debian",
+    "description": "Scala 3 (from scala-lang releases)"
+  },
+  {
+    "flag": "sqlite",
+    "aliases": [
+      "sqlite3"
+    ],
+    "base": "alpine",
+    "description": "SQLite CLI"
+  },
+  {
+    "flag": "swift",
+    "aliases": [],
+    "base": "alpine",
+    "description": "Swift toolchain (from swift.org)"
+  },
+  {
+    "flag": "vim",
+    "aliases": [
+      "vi",
+      "editor"
+    ],
+    "base": "alpine",
+    "description": "Vim and Neovim"
+  },
+  {
+    "flag": "zig",
+    "aliases": [],
+    "base": "alpine",
+    "description": "Zig compiler"
+  }
+]
