@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agents — vroot</title>
+<meta name="description" content="vroot's machine interface: JSON output, meaningful exit codes, content-addressed env images, concurrency-safe builds, and single-file snapshots for checkpointing.">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐚</text></svg>">
+<link rel="alternate" type="text/plain" href="llms.txt" title="vroot for language models">
+</head>
+<body>
+
+<nav>
+  <div class="brand"><span class="dot">$</span> vroot</div>
+  <div class="links">
+    <a href=".">Demo</a>
+    <a href="docs.html">Docs</a>
+    <a href="flags.html">Flags</a>
+    <a href="recipes.html">Recipes</a>
+    <a href="agents.html" class="active">Agents</a>
+    <a href="https://github.com/gairxx/vroot" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</nav>
+
+<div class="container">
+
+  <header class="hero">
+    <h1>Built for agents</h1>
+    <p>Agents need a toolchain on demand, deterministic output, and nothing left
+    behind. vroot is a single script that does exactly that — no daemon waiting
+    for you, no build queue, no stdin to negotiate.</p>
+    <div class="badges">
+      <span class="badge b">--json on stdout</span>
+      <span class="badge b">meaningful exit codes</span>
+      <span class="badge b">concurrency-safe</span>
+      <span class="badge b">forkable snapshots</span>
+    </div>
+  </header>
+
+  <section>
+    <h2><span class="hash">#</span> Machine-readable entry points</h2>
+    <table>
+      <thead><tr><th>Resource</th><th>What it is</th></tr></thead>
+      <tbody>
+        <tr><td><a href="llms.txt"><code>/llms.txt</code></a></td><td>compact index and quick start for language models</td></tr>
+        <tr><td><a href="llms-full.txt"><code>/llms-full.txt</code></a></td><td>everything in one plain-text file — no HTML, no JavaScript</td></tr>
+        <tr><td><a href="flags.json"><code>/flags.json</code></a></td><td>all 42 environments as JSON: flag, aliases, base, description</td></tr>
+        <tr><td><a href="AGENTS.md"><code>/AGENTS.md</code></a></td><td>short pointer served verbatim at the site root</td></tr>
+        <tr><td><a href="https://github.com/gairxx/vroot/blob/main/docs/AGENTS.md" target="_blank" rel="noopener">docs/AGENTS.md</a></td><td>the canonical contract: rules, JSON shapes, parallelism, forks</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2><span class="hash">#</span> Quick contract</h2>
+    <pre class="code-block"><code># build (or reuse) an env image and get its path
+$ vroot build -python --json
+{"env":"/home/u/.local/share/vroot/envs/python-84d0423ed3.sqfs","cached":false}
+
+# run one command; vroot forwards its exit status
+$ vroot -python -- python3 -c 'import sys; sys.exit(42)'
+$ echo $?
+42
+
+# checkpoint a named sandbox into one portable file, then fork it
+$ vroot -python work
+root@work:~# pip install requests
+root@work:~# exit
+$ vroot save work out.vroot
+$ vroot out.vroot -- python3 -c 'import requests; print(requests.__version__)'</code></pre>
+    <div class="callout">JSON is written to stdout, one value per invocation, newline
+    terminated. Logs and warnings go to stderr. Errors are a single
+    <code>err …</code> line with exit 1.</div>
+  </section>
+
+  <section>
+    <h2><span class="hash">#</span> JSON shapes</h2>
+    <table>
+      <thead><tr><th>Command</th><th>Output</th></tr></thead>
+      <tbody>
+        <tr><td><code>vroot build FLAGS --json</code></td><td><code>{"env":"…","cached":bool}</code></td></tr>
+        <tr><td><code>vroot ls --json</code></td><td><code>[{"name","env","image","bytes","age_minutes"}]</code></td></tr>
+        <tr><td><code>vroot envs --json</code></td><td><code>{"images":[{"file","bytes"}],"bases":[{"name","bytes"}]}</code></td></tr>
+        <tr><td><code>vroot info NAME --json</code></td><td><code>{"name","env","image","created","bytes","changed_files","path"}</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2><span class="hash">#</span> Why it suits automation</h2>
+    <ul>
+      <li><b>Deterministic images.</b> Env files are content-addressed:
+      <code>&lt;flags&gt;-&lt;10-hex&gt;.sqfs</code>. The same recipe set always
+      resolves to the same path, so it can be cached by name.</li>
+      <li><b>Safe in parallel.</b> Building the same env takes a directory lock;
+      a second process waits for the image instead of racing. Cache unpacking
+      is swapped in atomically.</li>
+      <li><b>No ambient state.</b> Unnamed runs are ephemeral and leave nothing
+      behind. Nothing on the host is written outside <code>$VROOT_HOME</code>.</li>
+      <li><b>Forkable checkpoints.</b> <code>save</code> produces one immutable
+      file; copy it and boot each copy as an independent sandbox.</li>
+      <li><b>No host leakage.</b> The host filesystem is invisible until you bind
+      it with <code>-v</code>; <code>-offline</code> removes the network too.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="hash">#</span> Rules of thumb</h2>
+    <ol>
+      <li>Call <code>vroot build … --json</code> and parse stdout as JSON.</li>
+      <li>Use <code>-- CMD</code> for one-shot work and trust the exit status.</li>
+      <li>Name a sandbox only for state that must survive.</li>
+      <li>Use <code>save</code> for checkpoints; boot the file to fork.</li>
+      <li>Run <code>vroot doctor</code> once per host before blaming the build.</li>
+      <li>Bind host paths explicitly with <code>-v</code>.</li>
+    </ol>
+    <p class="note">Full text: <a href="llms-full.txt">llms-full.txt</a> ·
+    source: <a href="https://github.com/gairxx/vroot" target="_blank" rel="noopener">github.com/gairxx/vroot</a>.</p>
+  </section>
+
+</div>
+
+<footer>
+  vroot — MIT licensed · <a href="https://github.com/gairxx/vroot" target="_blank" rel="noopener">github.com/gairxx/vroot</a>
+</footer>
+
+</body>
+</html>
