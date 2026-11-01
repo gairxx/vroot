@@ -17,6 +17,7 @@
     <a href="docs.html" class="active">Docs</a>
     <a href="flags.html">Flags</a>
     <a href="recipes.html">Recipes</a>
+    <a href="agents.html">Agents</a>
     <a href="https://github.com/gairxx/vroot" target="_blank" rel="noopener">GitHub</a>
   </div>
 </nav>
@@ -50,6 +51,7 @@
         <tr><td><code>-hostname H</code></td><td>hostname inside (default: sandbox name)</td></tr>
         <tr><td><code>-clean</code></td><td>start with an empty environment</td></tr>
         <tr><td><code>-rm</code></td><td>delete the sandbox after this session</td></tr>
+        <tr><td><code>--json</code></td><td>machine-readable output (build, ls, envs, info)</td></tr>
       </tbody>
     </table>
   </section>
@@ -129,6 +131,25 @@ notes</code></pre>
     </ol>
     <div class="callout">Storage root: <code>~/.local/share/vroot</code> (override with <code>$VROOT_HOME</code>).
     Recipes dir: <code>~/.config/vroot/recipes</code> (override with <code>$VROOT_CONFIG</code>).</div>
+  </section>
+
+  <section id="machine-interface">
+    <h2><span class="hash">#</span> Machine interface</h2>
+    <p>Scripts and agents get the same tool with a stable contract: JSON on
+    stdout, logs on stderr, and exit codes that mean something.</p>
+    <pre class="code-block"><code>vroot build -python --json   {"env":"/…/python-84d0423ed3.sqfs","cached":false}
+vroot ls --json              [{"name","env","image","bytes","age_minutes"}]
+vroot envs --json            {"images":[…],"bases":[…]}
+vroot info NAME --json       {"name","env","image","created","bytes","changed_files","path"}</code></pre>
+    <ul>
+      <li>Env images are content-addressed (<code>&lt;flags&gt;-&lt;10-hex&gt;.sqfs</code>), so identical inputs reuse one file.</li>
+      <li>Concurrent builds of the same env serialise on a lock; cache unpacking is atomic.</li>
+      <li><code>vroot … -- CMD</code> forwards the command's exit status; unknown flags exit 1.</li>
+      <li>Named sandboxes can be packed with <code>save</code> into one immutable file and booted as independent forks.</li>
+    </ul>
+    <div class="callout">Full contract: <a href="agents.html">agents.html</a> ·
+    <a href="llms.txt">llms.txt</a> · <a href="llms-full.txt">llms-full.txt</a> ·
+    <a href="flags.json">flags.json</a>.</div>
   </section>
 
   <section>

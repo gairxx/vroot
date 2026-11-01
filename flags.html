@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Flag catalog — vroot</title>
-<meta name="description" content="Complete vroot flag catalog: python, node, rust, go, php, sqlite, postgres and 35 more language and tool environments, one flag each.">
+<meta name="description" content="Complete vroot flag catalog: all 42 language and tool environments with aliases and base image, one flag each. Also available as flags.json.">
 <link rel="stylesheet" href="style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐚</text></svg>">
 </head>
@@ -17,6 +17,7 @@
     <a href="docs.html">Docs</a>
     <a href="flags.html" class="active">Flags</a>
     <a href="recipes.html">Recipes</a>
+    <a href="agents.html">Agents</a>
     <a href="https://github.com/gairxx/vroot" target="_blank" rel="noopener">GitHub</a>
   </div>
 </nav>
@@ -45,13 +46,57 @@ vroot -php -sqlite -git  vroot -go -python work  vroot -kotlin</code></pre>
     <h2><span class="hash">#</span> Full list</h2>
     <div class="card" style="overflow-x:auto">
       <table id="flags-table">
-        <thead><tr><th>Flag</th><th>Aliases</th><th>Base</th><th>Shipped version</th></tr></thead>
-        <tbody id="flags-body"></tbody>
+        <thead><tr><th>Flag</th><th>Aliases</th><th>Base</th><th>Description</th></tr></thead>
+        <tbody id="flags-body">
+        <tr><td><code>-base</code></td><td><code>alpine</code></td><td>alpine</td><td>Bare Alpine root shell (default)</td></tr>
+        <tr><td><code>-bun</code></td><td>&nbsp;</td><td>debian</td><td>Bun runtime (installed from bun.sh)</td></tr>
+        <tr><td><code>-clang</code></td><td><code>llvm</code></td><td>alpine</td><td>Clang / LLVM C and C++ toolchain</td></tr>
+        <tr><td><code>-clojure</code></td><td><code>clj</code> <code>cljs</code></td><td>debian</td><td>Clojure (Debian package)</td></tr>
+        <tr><td><code>-cmake</code></td><td>&nbsp;</td><td>alpine</td><td>CMake build system</td></tr>
+        <tr><td><code>-crystal</code></td><td><code>shards</code></td><td>alpine</td><td>Crystal language</td></tr>
+        <tr><td><code>-curl</code></td><td><code>wget</code> <code>http</code></td><td>alpine</td><td>curl and wget with CA certs</td></tr>
+        <tr><td><code>-d</code></td><td><code>dmd</code> <code>ldc</code> <code>dlang</code></td><td>alpine</td><td>D language (LDC + dub)</td></tr>
+        <tr><td><code>-debian</code></td><td><code>deb</code></td><td>debian</td><td>Bare Debian root shell (glibc)</td></tr>
+        <tr><td><code>-deno</code></td><td><code>typescript</code> <code>ts</code></td><td>alpine</td><td>Deno (with built-in TypeScript)</td></tr>
+        <tr><td><code>-dotnet</code></td><td><code>.net</code> <code>dotnet8</code> <code>csharp</code> <code>c#</code></td><td>alpine</td><td>.NET 8 SDK (C#, F#, VB)</td></tr>
+        <tr><td><code>-elixir</code></td><td><code>mix</code> <code>iex</code></td><td>alpine</td><td>Elixir on Erlang/OTP</td></tr>
+        <tr><td><code>-erlang</code></td><td><code>erl</code> <code>escript</code></td><td>alpine</td><td>Erlang/OTP</td></tr>
+        <tr><td><code>-fsharp</code></td><td><code>f#</code> <code>fsc</code></td><td>alpine</td><td>F# on the .NET 8 SDK</td></tr>
+        <tr><td><code>-gcc</code></td><td><code>cc</code> <code>g++</code></td><td>alpine</td><td>GCC C and C++ toolchain</td></tr>
+        <tr><td><code>-gfortran</code></td><td><code>fortran</code></td><td>alpine</td><td>GNU Fortran compiler</td></tr>
+        <tr><td><code>-git</code></td><td><code>gh</code></td><td>alpine</td><td>Git with SSH client</td></tr>
+        <tr><td><code>-go</code></td><td><code>golang</code></td><td>alpine</td><td>Go toolchain</td></tr>
+        <tr><td><code>-groovy</code></td><td>&nbsp;</td><td>debian</td><td>Apache Groovy (Debian package)</td></tr>
+        <tr><td><code>-haskell</code></td><td><code>ghc</code> <code>cabal</code> <code>stack</code></td><td>alpine</td><td>GHC and Cabal</td></tr>
+        <tr><td><code>-java</code></td><td><code>jdk</code> <code>jre</code> <code>javac</code></td><td>alpine</td><td>OpenJDK 17</td></tr>
+        <tr><td><code>-julia</code></td><td>&nbsp;</td><td>debian</td><td>Julia (installed from julialang.org)</td></tr>
+        <tr><td><code>-kotlin</code></td><td><code>kotlinc</code></td><td>debian</td><td>Kotlin compiler (from JetBrains releases)</td></tr>
+        <tr><td><code>-lua</code></td><td><code>lua5</code> <code>lua5.4</code> <code>luajit</code></td><td>alpine</td><td>Lua 5.4 with LuaRocks</td></tr>
+        <tr><td><code>-mysql</code></td><td><code>mariadb</code></td><td>alpine</td><td>MariaDB server and client</td></tr>
+        <tr><td><code>-nasm</code></td><td><code>asm</code></td><td>alpine</td><td>NASM assembler</td></tr>
+        <tr><td><code>-nim</code></td><td><code>nimble</code></td><td>alpine</td><td>Nim compiler</td></tr>
+        <tr><td><code>-node</code></td><td><code>nodejs</code> <code>npm</code> <code>javascript</code> <code>js</code></td><td>alpine</td><td>Node.js and npm</td></tr>
+        <tr><td><code>-ocaml</code></td><td><code>opam</code> <code>dune</code></td><td>alpine</td><td>OCaml with opam and dune</td></tr>
+        <tr><td><code>-openssh</code></td><td><code>ssh</code> <code>sshd</code></td><td>alpine</td><td>OpenSSH client and server</td></tr>
+        <tr><td><code>-perl</code></td><td><code>cpan</code></td><td>alpine</td><td>Perl</td></tr>
+        <tr><td><code>-php</code></td><td><code>php8</code></td><td>alpine</td><td>PHP 8.3 with common extensions</td></tr>
+        <tr><td><code>-postgres</code></td><td><code>postgresql</code> <code>psql</code></td><td>alpine</td><td>PostgreSQL server and client</td></tr>
+        <tr><td><code>-python</code></td><td><code>python3</code> <code>py</code></td><td>alpine</td><td>Python 3 with pip</td></tr>
+        <tr><td><code>-r</code></td><td><code>rlang</code> <code>rscript</code></td><td>alpine</td><td>R statistical language</td></tr>
+        <tr><td><code>-ruby</code></td><td><code>gem</code> <code>irb</code></td><td>alpine</td><td>Ruby with RubyGems</td></tr>
+        <tr><td><code>-rust</code></td><td><code>cargo</code> <code>rustc</code></td><td>alpine</td><td>Rust compiler and Cargo</td></tr>
+        <tr><td><code>-scala</code></td><td><code>scala3</code></td><td>debian</td><td>Scala 3 (from scala-lang releases)</td></tr>
+        <tr><td><code>-sqlite</code></td><td><code>sqlite3</code></td><td>alpine</td><td>SQLite CLI</td></tr>
+        <tr><td><code>-swift</code></td><td>&nbsp;</td><td>debian</td><td>Swift toolchain (from swift.org)</td></tr>
+        <tr><td><code>-vim</code></td><td><code>vi</code> <code>editor</code></td><td>alpine</td><td>Vim and Neovim</td></tr>
+        <tr><td><code>-zig</code></td><td>&nbsp;</td><td>alpine</td><td>Zig compiler</td></tr>
+        </tbody>
       </table>
     </div>
     <p class="note">Alpine base = tiny &amp; fast build. Debian base = glibc/apt
     (requires <code>docker</code> once on the host). Aliases are just <code>provides</code>
-    entries, so <code>-python3</code> and <code>-py</code> are the same environment as <code>-python</code>.</p>
+    entries, so <code>-python3</code> and <code>-py</code> are the same environment as <code>-python</code>.
+    Machine-readable copy: <a href="flags.json"><code>flags.json</code></a>.</p>
   </section>
 
 </div>
@@ -60,19 +105,5 @@ vroot -php -sqlite -git  vroot -go -python work  vroot -kotlin</code></pre>
   vroot — MIT licensed · <a href="https://github.com/gairxx/vroot" target="_blank" rel="noopener">github.com/gairxx/vroot</a>
 </footer>
 
-<script src="app.js"></script>
-<script>
-  window.addEventListener('DOMContentLoaded', function () {
-    var tbody = document.getElementById('flags-body');
-    (window.VRootCat || []).forEach(function (f) {
-      var tr = document.createElement('tr');
-      tr.innerHTML = '<td><code>-' + f[0] + '</code></td>' +
-        '<td><code>' + (f[1] || '&nbsp;').split(',').join('</code> <code>') + '</code></td>' +
-        '<td>' + f[2] + '</td>' +
-        '<td class="mono" style="color:var(--muted)">' + f[3] + '</td>';
-      tbody.appendChild(tr);
-    });
-  });
-</script>
 </body>
 </html>
