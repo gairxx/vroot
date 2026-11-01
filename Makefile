@@ -3,7 +3,7 @@ REF ?= main
 VERSION := $(shell sed -n 's/^VERSION="\(.*\)"/\1/p' vroot)
 DIST := dist/vroot-$(VERSION)
 
-.PHONY: install uninstall test dist clean
+.PHONY: install uninstall test dist clean graph-check graph-index graph-update
 
 install:
 	VROOT_PREFIX="$(PREFIX)" VROOT_VERSION="$(REF)" sh ./install.sh
@@ -27,5 +27,15 @@ dist:
 	tar -czf "$(DIST).tar.gz" -C dist "vroot-$(VERSION)"; \
 	echo "$(DIST).tar.gz"
 
+graph-update:
+	python3 tools/graphctl ingest --write
+
+graph-check:
+	python3 tools/graphctl check
+	python3 tools/graphctl guard
+
+graph-index:
+	python3 tools/graphctl index
+
 clean:
-	rm -rf dist
+	rm -rf dist graph/index.sqlite
