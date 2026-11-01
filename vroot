@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-VERSION="2.2.0"
+VERSION="2.2.1"
 
 # Resolve our own path with pure bash so the hot path forks only when vroot is
 # installed as a symlink (the common `~/.local/bin/vroot` case).
@@ -200,9 +200,9 @@ IDX_PATH=""; IDX_NAME=""; IDX_BASE=""
 index_lookup() {
     IDX_PATH=""; IDX_NAME=""; IDX_BASE=""
     safe_recipe_flag "$1" || return 1
-    IFS=$'\t' read -r IDX_PATH IDX_NAME IDX_BASE < "$RECIPE_INDEX_DIR/$1" 2>/dev/null || {
-        IDX_PATH=""; return 1
-    }
+    local entry="$RECIPE_INDEX_DIR/$1"
+    [[ -f "$entry" ]] || return 1
+    IFS=$'\t' read -r IDX_PATH IDX_NAME IDX_BASE < "$entry" || { IDX_PATH=""; return 1; }
     [[ -n "$IDX_PATH" ]]
 }
 
@@ -974,7 +974,7 @@ cmd_banner() {
  __   __  ____   ___   ___  _____
  \ \ / / |  _ \ / _ \ / _ \ |_   _|
   \ V /  | |_) | | | | | | | |   | |
-   | |   |  _ < | |_| | | |_| |  | |
+   | |   |  _ < | |_| | |_| |  | |
     |_|   |_| \_\ \___/ \___/    |_|
 ART
     printf '%s' "$C0"
