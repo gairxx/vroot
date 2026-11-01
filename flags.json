@@ -334,7 +334,7 @@
   {
     "flag": "swift",
     "aliases": [],
-    "base": "alpine",
+    "base": "debian",
     "description": "Swift toolchain (from swift.org)"
   },
   {
