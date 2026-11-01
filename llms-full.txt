@@ -1,0 +1,320 @@
+vroot — plain-text reference for agents
+Version 2.2.x · MIT · https://github.com/gairxx/vroot
+This file is self-contained. It is the same information the website shows,
+without JavaScript, HTML chrome or navigation.
+
+===============================================================================
+1. WHAT VROOT IS
+===============================================================================
+
+vroot is one Bash script. It turns a flag into an isolated Linux root shell:
+
+    vroot -python          a root shell with Python
+    vroot -node -python    a shell with Node and Python merged
+    vroot -rust -- cargo build   run a command instead of a shell
+
+It is not Docker: there is no daemon and no image build queue. A flag set maps
+to one or more "recipes"; recipes are merged into a single-file squashfs image
+(`<flags>-<10-hex>.sqfs`) built once and cached. Each session unpacks the image
+to a cache directory and runs it through bubblewrap with overlayfs, so you get
+uid 0 with full capabilities inside the sandbox, but confined by user, PID,
+mount, UTS and IPC namespaces. The host filesystem is not visible unless you
+bind it explicitly with -v.
+
+Design goals that matter to agents:
+  - No sudo, no daemon, no service to start.
+  - Deterministic, content-addressed env images.
+  - Machine-readable output (--json) on stdout, diagnostics on stderr.
+  - Safe under concurrency: parallel builds of the same env serialise.
+  - Snapshots are single files you can copy, hand off, or boot elsewhere.
+
+===============================================================================
+2. REQUIREMENTS AND INSTALL
+===============================================================================
+
+Host: Linux with unprivileged user namespaces.
+Required: bubblewrap, util-linux (unshare), squashfs-tools (mksquashfs,
+unsquashfs), curl (or wget).
+Optional: docker — only for flags whose recipe targets the Debian base
+(bun, clojure, groovy, julia, kotlin, scala, swift).
+
+Install (no sudo):
+
+    curl -fsSL https://raw.githubusercontent.com/gairxx/vroot/main/install.sh | sh
+
+Options: --prefix DIR (default $HOME/.local), --version REF (default main),
+--uninstall, -h.
+
+Or run in place:
+
+    git clone https://github.com/gairxx/vroot && bash vroot/vroot -python
+
+Check the host:
+
+    vroot doctor
+
+Storage root: $VROOT_HOME (default ~/.local/share/vroot)
+Recipes dir:  $VROOT_CONFIG/recipes (default ~/.config/vroot/recipes)
+
+===============================================================================
+3. CLI SYNOPSIS
+===============================================================================
+
+    vroot [FLAGS] [NAME] [OPTIONS] [-- COMMAND]
+
+  - FLAGS    one per tool/language, e.g. -python, -node. Combine freely.
+  - NAME     a sandbox name; makes the sandbox persistent and reusable.
+  - -- CMD   run CMD and exit instead of opening an interactive shell.
+  - A bare `vroot` prints a quick-start banner; it does NOT open a shell.
+    Use `vroot -base` for a blank Alpine root shell.
+
+Examples:
+
+    vroot -base                     blank Alpine root shell
+    vroot -python                   root shell with Python
+    vroot -php -sqlite -git         compose tools
+    vroot -python work              persistent sandbox named "work"
+    vroot work -- python3 -V        reuse it, run one command
+    vroot -go -v ~/src:/src -- ls /src   expose a host dir (rw)
+    vroot -python -offline          no network
+    vroot -node -- node -e 'console.log(process.version)'
+
+===============================================================================
+4. OPTIONS
+===============================================================================
+
+  -v SRC[:DST][:ro]   expose a host path (default: nothing from the host)
+  -offline / -o       no network (loopback only)
+  -net                re-enable network (default)
+  -cwd DIR            working directory (default /root)
+  -env K=V            set an environment variable (repeatable)
+  -name NAME          persistent sandbox name
+  -hostname H         hostname inside (default: the sandbox name)
+  -clean              start with an empty environment
+  -rm                 delete the sandbox after this session
+  -json / --json      machine-readable output
+  -h / --help         help
+
+===============================================================================
+5. FLAGS (42)
+===============================================================================
+
+Column order: flag, base, aliases, description. Aliases are `provides` entries,
+so -python3 and -py resolve to the same environment as -python.
+
+  -base       alpine  alpine                                 Bare Alpine root shell (default)
+  -bun        debian  -                                      Bun runtime (installed from bun.sh)
+  -clang      alpine  llvm                                   Clang / LLVM C and C++ toolchain
+  -clojure    debian  clj, cljs                              Clojure (Debian package)
+  -cmake      alpine  -                                      CMake build system
+  -crystal    alpine  shards                                 Crystal language
+  -curl       alpine  wget, http                             curl and wget with CA certs
+  -d          alpine  dmd, ldc, dlang                        D language (LDC + dub)
+  -debian     debian  deb                                    Bare Debian root shell (glibc)
+  -deno       alpine  typescript, ts                         Deno (with built-in TypeScript)
+  -dotnet     alpine  .net, dotnet8, csharp, c#              .NET 8 SDK (C#, F#, VB)
+  -elixir     alpine  mix, iex                               Elixir on Erlang/OTP
+  -erlang     alpine  erl, escript                           Erlang/OTP
+  -fsharp     alpine  f#, fsc                                F# on the .NET 8 SDK
+  -gcc        alpine  cc, g++                                GCC C and C++ toolchain
+  -gfortran   alpine  fortran                                GNU Fortran compiler
+  -git        alpine  gh                                     Git with SSH client
+  -go         alpine  golang                                 Go toolchain
+  -groovy     debian  -                                      Apache Groovy (Debian package)
+  -haskell    alpine  ghc, cabal, stack                      GHC and Cabal
+  -java       alpine  jdk, jre, javac                        OpenJDK 17
+  -julia      debian  -                                      Julia (installed from julialang.org)
+  -kotlin     debian  kotlinc                                Kotlin compiler (from JetBrains releases)
+  -lua        alpine  lua5, lua5.4, luajit                   Lua 5.4 with LuaRocks
+  -mysql      alpine  mariadb                                MariaDB server and client
+  -nasm       alpine  asm                                    NASM assembler
+  -nim        alpine  nimble                                 Nim compiler
+  -node       alpine  nodejs, npm, javascript, js            Node.js and npm
+  -ocaml      alpine  opam, dune                             OCaml with opam and dune
+  -openssh    alpine  ssh, sshd                              OpenSSH client and server
+  -perl       alpine  cpan                                   Perl
+  -php        alpine  php8                                   PHP 8.3 with common extensions
+  -postgres   alpine  postgresql, psql                       PostgreSQL server and client
+  -python     alpine  python3, py                            Python 3 with pip
+  -r          alpine  rlang, rscript                         R statistical language
+  -ruby       alpine  gem, irb                               Ruby with RubyGems
+  -rust       alpine  cargo, rustc                           Rust compiler and Cargo
+  -scala      debian  scala3                                 Scala 3 (from scala-lang releases)
+  -sqlite     alpine  sqlite3                                SQLite CLI
+  -swift      debian  -                                      Swift toolchain (from swift.org)
+  -vim        alpine  vi, editor                             Vim and Neovim
+  -zig        alpine  -                                      Zig compiler
+
+===============================================================================
+6. MANAGEMENT COMMANDS
+===============================================================================
+
+  vroot build FLAGS...        build (or reuse) an env image; prints its path
+  vroot ls | list             list sandboxes
+  vroot rm NAME... | --all    delete sandboxes
+  vroot info NAME             sandbox details
+  vroot save NAME [OUT.vroot] pack a sandbox (with changes) into one image
+  vroot OUT.vroot             boot from a saved image file
+  vroot envs | images         list built env images and cached bases
+  vroot prune | gc            clear caches and temporary files
+  vroot filetype [install|uninstall|status]
+                              register .vroot/*.sqfs as a file type
+  vroot recipe list|show NAME|new NAME|edit NAME|path
+                              browse or author recipes
+  vroot doctor                check the host setup
+  vroot help                  full help
+  vroot version               print version
+
+===============================================================================
+7. JSON INTERFACE
+===============================================================================
+
+JSON is written to stdout, exactly one value per invocation, always newline
+terminated. Logs and warnings go to stderr. `-json` and `--json` are
+equivalent.
+
+  vroot build -python --json
+      {"env":"/home/u/.local/share/vroot/envs/python-84d0423ed3.sqfs","cached":false}
+      Keys: env (absolute path), cached (bool: true if the image already existed).
+
+  vroot ls --json
+      [{"name":"work","env":"python-84d0423ed3.sqfs",
+        "image":"/…/python-84d0423ed3.sqfs","bytes":123456,"age_minutes":12}]
+      One object per sandbox. age_minutes is null when the creation time is
+      unknown or unparsable.
+
+  vroot envs --json
+      {"images":[{"file":"python-84d0423ed3.sqfs","bytes":26214400}],
+       "bases":[{"name":"alpine","bytes":8123456}]}
+      images = env squashfs files; bases = unpacked base rootfs cache.
+
+  vroot info NAME --json
+      {"name":"work","env":"python-84d0423ed3.sqfs","image":"/…/python.sqfs",
+       "created":"2026-10-31T12:00:00+00:00","bytes":4096,
+       "changed_files":3,"path":"/…/instances/work"}
+      changed_files counts entries in the sandbox's upper (writable) layer.
+
+Exit codes:
+  0    success
+  1    error (unknown flag, missing sandbox, build failure, bad arguments)
+  N    with `-- CMD`, vroot forwards the command's own exit status (e.g. 42)
+
+===============================================================================
+8. CONCURRENCY AND ATOMICITY
+===============================================================================
+
+Several agents may hit the same env at once. vroot is built for that:
+
+  - Build lock: building an env takes a directory lock at
+    "<envfile>.lock" (mkdir). A second builder waits up to ~180 s for the
+    image to appear instead of racing mksquashfs on the same path.
+  - Atomic cache unpack: the image is unpacked into "<cache>.tmp.$$" and then
+    swapped in with rm -rf + mv, so no process sees a half-written tree.
+  - Content-addressed names: the image name embeds a 10-hex sha256 of the
+    resolved recipe contents plus the base, so identical inputs reuse one file.
+  - Distinct envs build and run independently; there is no global lock.
+
+===============================================================================
+9. PERSISTENCE, SNAPSHOTS AND FORKS
+===============================================================================
+
+Named sandbox:   vroot -python work
+  Changes go to instances/work/upper (overlayfs upper layer). Reusing the name
+  reattaches the same env; using a different env with the same name is an error.
+
+Snapshot:        vroot save work out.vroot
+  Packs the merged filesystem (env + your changes) into one squashfs file with
+  a .vroot extension. Boot it anywhere vroot is installed:
+      vroot out.vroot -- cat /root/notes.txt
+
+Fork: name a sandbox from an image, or copy a saved image and boot it under a
+  new name. Because images are immutable single files, copies are independent
+  checkpoints: launch two sandboxes from the same image and their writes never
+  intersect.
+
+===============================================================================
+10. ISOLATION MODEL
+===============================================================================
+
+Inside the sandbox you are uid 0 with CAP_ALL, but:
+  - user namespace (unprivileged), mapped to your host user
+  - separate PID, UTS, IPC (and best-effort cgroup) namespaces
+  - the root filesystem is an overlayfs mount: lower = cached env image
+    (read-only), upper = tmpfs (ephemeral) or the named sandbox's upper/ dir
+  - /proc, /dev, /tmp, /run are fresh; /sys is read-only if present
+  - no host paths are visible unless bound with -v
+  - -offline removes the network namespace
+
+Nothing runs as root on the host, and no host file is written except under
+$VROOT_HOME (envs, cache, instances, tmp, recipe-index).
+
+===============================================================================
+11. STORAGE LAYOUT
+===============================================================================
+
+$VROOT_HOME/
+  envs/<slug>-<hash>.sqfs    built env images (content-addressed)
+  cache/<slug>-<hash>/       unpacked, read-only lower layer
+  cache/.bases/<base>/       unpacked base rootfs cache
+  instances/<name>/          persistent sandboxes
+      meta                   ENV=…, IMG=…, CREATED=…
+      upper/ work/ .merged/  overlayfs layers
+  tmp/                       scratch; run roots for ephemeral sandboxes
+  recipe-index/              flag → recipe index (one file per flag) + .stamp
+
+===============================================================================
+12. RECIPE FORMAT
+===============================================================================
+
+A recipe is a key = value file in recipes/ (built in) or
+$VROOT_CONFIG/recipes/ (yours). Minimal example:
+
+    name        = python
+    provides    = python,python3,py
+    base        = alpine
+    packages    = python3 py3-pip
+    setup       = ln -sf /usr/bin/python3 /usr/local/bin/python
+    env         = PYTHONUNBUFFERED=1
+    path        = /usr/local/bin
+    verify      = python3 --version
+    description = Python 3 interpreter and pip
+
+Keys:
+  name         canonical recipe name (defaults to the filename)
+  provides     comma/space list of flags and aliases that select this recipe
+  base         alpine (default) or debian (needs docker on the host)
+  packages     packages passed to apk add / apt-get install (repeatable)
+  setup        shell lines run at build time (repeatable)
+  env          KEY=VAL lines exported in every sandbox (repeatable)
+  path         extra PATH entries, prepended
+  verify       commands run at the end of the build (repeatable)
+  description  one-line human summary (shown by `vroot recipe list`)
+  docs         documentation URL
+
+Resolution precedence (do not rely on anything else):
+  1. a user recipe whose filename matches the flag
+  2. a user recipe whose `provides` contains the flag
+  3. a built-in recipe whose filename matches the flag
+  4. a built-in recipe whose `provides` contains the flag
+
+Add a recipe:
+
+    vroot recipe new mytool     # creates ~/.config/vroot/recipes/mytool.conf
+    vroot recipe edit mytool
+    vroot recipe list           # see it in the catalogue
+    vroot -mytool               # use it
+
+===============================================================================
+13. RULES FOR AGENTS
+===============================================================================
+
+  1. Prefer `vroot build FLAGS --json` to obtain an env path; parse stdout as
+     JSON and treat stderr as logs, not data.
+  2. Use `-- CMD` for one-shot work; it forwards the command's exit status.
+  3. Name sandboxes for state that must survive; use unnamed ephemeral runs for
+     everything else (they leave nothing behind).
+  4. Use `vroot save NAME out.vroot` for a checkpoint, and boot the file to
+     fork independent copies.
+  5. Check exit codes, not stderr text; errors are one `err …` line, exit 1.
+  6. Run `vroot doctor` once per host before assuming failure is your bug.
+  7. Never assume the host filesystem is visible: bind explicitly with -v.
