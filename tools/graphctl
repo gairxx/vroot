@@ -1,0 +1,919 @@
+#!/usr/bin/env python3
+"""graphctl — the vroot project graph.
+
+The graph is two line-delimited JSON files under graph/:
+
+  graph/nodes.jsonl   {"id": "...", "kind": "...", "attrs": {"k": "v"}}
+  graph/edges.jsonl   {"src": "...", "rel": "...", "dst": "...", "attrs": {}}
+
+They are the source of truth and are reviewed in pull requests like code.
+Everything else (the SQLite index, exports) is derived and disposable.
+
+Run `graphctl schema` for the node kinds and edge relations, and
+`graphctl help` for the commands.
+"""
+
+import json
+import os
+import re
+import signal
+import sys
+import time
+from pathlib import Path
+
+BASE = Path(__file__).resolve().parent.parent
+GRAPH_DIR = BASE / "graph"
+NODES_FILE = GRAPH_DIR / "nodes.jsonl"
+EDGES_FILE = GRAPH_DIR / "edges.jsonl"
+INDEX_FILE = GRAPH_DIR / "index.sqlite"
+LOCK_DIR = GRAPH_DIR / ".lock"
+
+KINDS = {
+    "repo": "the project as a whole",
+    "module": "a source file or unit that contains code",
+    "function": "a top-level function in a module",
+    "command": "a user-facing CLI command",
+    "recipe": "a vroot recipe (one flag family)",
+    "flag": "a flag or alias that selects a recipe",
+    "base": "a rootfs base (alpine, debian)",
+    "doc": "a documentation file",
+    "section": "a heading inside a documentation file",
+    "adr": "an architecture decision record",
+}
+
+RELS = {
+    "contains": "parent structurally contains child",
+    "provides": "recipe provides a flag/alias",
+    "based_on": "recipe builds on a base rootfs",
+    "documents": "doc or section describes a target",
+    "mentions": "text references a target by its -flag form",
+    "affects": "an ADR governs a target",
+    "supersedes": "a newer ADR replaces an older one",
+    "depends_on": "target needs the other to exist",
+}
+
+MANDATORY = {"src", "rel", "dst"}
+
+
+# ---------------------------------------------------------------- utilities
+
+def die(msg, code=1):
+    print("err: " + msg, file=sys.stderr)
+    sys.exit(code)
+
+
+def load_jsonl(path):
+    if not path.exists():
+        return []
+    out = []
+    with path.open("r", encoding="utf-8") as fh:
+        for n, line in enumerate(fh, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                out.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                die(f"{path}:{n}: invalid JSON: {exc}")
+    return out
+
+
+def dump_line(obj):
+    return json.dumps(obj, ensure_ascii=False, sort_keys=True)
+
+
+def write_jsonl(path, items, key):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    items = sorted(items, key=key)
+    tmp = path.with_name(path.name + f".tmp.{os.getpid()}")
+    with tmp.open("w", encoding="utf-8") as fh:
+        for item in items:
+            fh.write(dump_line(item) + "\n")
+    os.replace(tmp, path)
+
+
+class Lock:
+    """Directory lock so concurrent agents cannot interleave writes."""
+
+    def __init__(self, path, timeout=30.0):
+        self.path = path
+        self.timeout = timeout
+
+    def __enter__(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        deadline = time.time() + self.timeout
+        while True:
+            try:
+                os.mkdir(self.path)
+                return self
+            except FileExistsError:
+                if time.time() > deadline:
+                    die(f"graph is locked by another process ({self.path})")
+                time.sleep(0.1)
+
+    def __exit__(self, *exc):
+        try:
+            os.rmdir(self.path)
+        except OSError:
+            pass
+        return False
+
+
+def graph():
+    nodes = {n["id"]: n for n in load_jsonl(NODES_FILE)}
+    seen = set()
+    edges = []
+    for e in load_jsonl(EDGES_FILE):
+        key = (e["src"], e["rel"], e["dst"])
+        if key in seen:
+            continue
+        seen.add(key)
+        edges.append(e)
+    return nodes, edges
+
+
+def save_graph(nodes, edges):
+    write_jsonl(NODES_FILE, nodes.values(), lambda n: n["id"])
+    write_jsonl(EDGES_FILE, edges, lambda e: (e["src"], e["rel"], e["dst"]))
+
+
+def attrs_from_args(pairs):
+    out = {}
+    for pair in pairs:
+        if "=" not in pair:
+            die(f"expected key=value, got {pair!r}")
+        k, v = pair.split("=", 1)
+        out[k.strip()] = v.strip()
+    return out
+
+
+def emit(obj, as_json):
+    if as_json:
+        print(json.dumps(obj, ensure_ascii=False, indent=2))
+        return
+    print_plain(obj)
+
+
+def print_plain(obj):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if isinstance(v, (dict, list)):
+                print(f"{k}:")
+                print_plain(v)
+            else:
+                print(f"{k}: {v}")
+    elif isinstance(obj, list):
+        for item in obj:
+            print_plain(item)
+            print()
+    else:
+        print(obj)
+
+
+# ---------------------------------------------------------------- graph edits
+
+def cmd_add(args):
+    as_json = "--json" in args
+    args = [a for a in args if a != "--json"]
+    positional = [a for a in args if "=" not in a]
+    attrs = attrs_from_args([a for a in args if "=" in a])
+    if len(positional) == 1:
+        ident = positional[0]
+        if ":" not in ident:
+            die("usage: graphctl add KIND ID [key=value ...] or add KIND:ID [key=value ...]")
+        kind = ident.split(":", 1)[0]
+    elif len(positional) == 2:
+        kind, ident = positional
+        if ":" not in ident:
+            ident = f"{kind}:{ident}"
+    else:
+        die("usage: graphctl add KIND ID [key=value ...] or add KIND:ID [key=value ...]")
+    if kind not in KINDS:
+        die(f"unknown kind {kind!r} (see: graphctl schema)")
+    with Lock(LOCK_DIR):
+        nodes, edges = graph()
+        if ident in nodes:
+            die(f"node already exists: {ident}")
+        attrs.setdefault("origin", "declared")
+        node = {"id": ident, "kind": kind, "attrs": attrs}
+        nodes[ident] = node
+        save_graph(nodes, edges)
+    emit({"added": ident, "kind": kind}, as_json)
+
+
+def cmd_set(args):
+    as_json = "--json" in args
+    args = [a for a in args if a != "--json"]
+    if len(args) < 1:
+        die("usage: graphctl set ID [key=value ...]")
+    ident = args[0]
+    attrs = attrs_from_args(args[1:])
+    with Lock(LOCK_DIR):
+        nodes, edges = graph()
+        if ident not in nodes:
+            die(f"no such node: {ident}")
+        nodes[ident].setdefault("attrs", {}).update(attrs)
+        save_graph(nodes, edges)
+    emit({"updated": ident, "attrs": attrs}, as_json)
+
+
+def cmd_link(args):
+    as_json = "--json" in args
+    args = [a for a in args if a != "--json"]
+    if len(args) < 3:
+        die("usage: graphctl link SRC REL DST [key=value ...]")
+    src, rel, dst = args[0], args[1], args[2]
+    if rel not in RELS:
+        die(f"unknown relation {rel!r} (see: graphctl schema)")
+    attrs = attrs_from_args(args[3:])
+    with Lock(LOCK_DIR):
+        nodes, edges = graph()
+        for end in (src, dst):
+            if end not in nodes:
+                die(f"no such node: {end}")
+        if any(e["src"] == src and e["rel"] == rel and e["dst"] == dst for e in edges):
+            emit({"linked": f"{src} -{rel}-> {dst}", "existing": True}, as_json)
+            return
+        attrs.setdefault("origin", "declared")
+        edge = {"src": src, "rel": rel, "dst": dst, "attrs": attrs}
+        edges.append(edge)
+        save_graph(nodes, edges)
+    emit({"linked": f"{src} -{rel}-> {dst}"}, as_json)
+
+
+def cmd_unlink(args):
+    as_json = "--json" in args
+    args = [a for a in args if a != "--json"]
+    if len(args) != 3:
+        die("usage: graphctl unlink SRC REL DST")
+    src, rel, dst = args
+    with Lock(LOCK_DIR):
+        nodes, edges = graph()
+        keep = [e for e in edges if not (e["src"] == src and e["rel"] == rel and e["dst"] == dst)]
+        removed = len(edges) - len(keep)
+        save_graph(nodes, keep)
+    emit({"removed": removed}, as_json)
+
+
+def cmd_rm(args):
+    as_json = "--json" in args
+    cascade = "--cascade" in args
+    args = [a for a in args if a not in ("--json", "--cascade")]
+    if len(args) != 1:
+        die("usage: graphctl rm ID [--cascade]")
+    ident = args[0]
+    with Lock(LOCK_DIR):
+        nodes, edges = graph()
+        if ident not in nodes:
+            die(f"no such node: {ident}")
+        touching = [e for e in edges if ident in (e["src"], e["dst"])]
+        if touching and not cascade:
+            die(f"{ident} has {len(touching)} edge(s); pass --cascade to remove them")
+        del nodes[ident]
+        edges = [e for e in edges if ident not in (e["src"], e["dst"])]
+        save_graph(nodes, edges)
+    emit({"removed": ident, "edges": len(touching)}, as_json)
+
+
+# ---------------------------------------------------------------- queries
+
+def cmd_get(args):
+    as_json = "--json" in args
+    args = [a for a in args if a != "--json"]
+    if len(args) != 1:
+        die("usage: graphctl get ID")
+    nodes, edges = graph()
+    ident = args[0]
+    if ident not in nodes:
+        die(f"no such node: {ident}")
+    out = dict(nodes[ident])
+    out["edges"] = [
+        {"rel": e["rel"], "to": e["dst"]} for e in edges if e["src"] == ident
+    ]
+    out["incoming"] = [
+        {"rel": e["rel"], "from": e["src"]} for e in edges if e["dst"] == ident
+    ]
+    emit(out, as_json)
+
+
+def cmd_list(args):
+    as_json = "--json" in args
+    kind = None
+    if "--kind" in args:
+        idx = args.index("--kind")
+        if idx + 1 >= len(args):
+            die("usage: graphctl list [--kind KIND]")
+        kind = args[idx + 1]
+        args = args[:idx] + args[idx + 2:]
+    nodes, _ = graph()
+    rows = [n for n in nodes.values() if kind is None or n["kind"] == kind]
+    rows.sort(key=lambda n: n["id"])
+    if as_json:
+        print(json.dumps(rows, ensure_ascii=False, indent=2))
+        return
+    for n in rows:
+        print(n["id"])
+
+
+def _walk(edges, start, rel, depth, direction):
+    frontier = [start]
+    seen = {start}
+    levels = 0
+    hits = []
+    while frontier and levels < depth:
+        nxt = []
+        for node in frontier:
+            for e in edges:
+                if rel and e["rel"] != rel:
+                    continue
+                if direction in ("out", "both") and e["src"] == node and e["dst"] not in seen:
+                    seen.add(e["dst"])
+                    nxt.append(e["dst"])
+                    hits.append({"node": e["dst"], "via": e["rel"], "from": node,
+                                 "depth": levels + 1})
+                if direction in ("in", "both") and e["dst"] == node and e["src"] not in seen:
+                    seen.add(e["src"])
+                    nxt.append(e["src"])
+                    hits.append({"node": e["src"], "via": e["rel"], "from": node,
+                                 "depth": levels + 1})
+        frontier = nxt
+        levels += 1
+    return hits
+
+
+def cmd_query(args):
+    as_json = "--json" in args
+    opts = {"rel": None, "depth": 1, "dir": "out"}
+    src = None
+    rest = [a for a in args if a != "--json"]
+    i = 0
+    while i < len(rest):
+        a = rest[i]
+        if a in ("--from", "--rel", "--depth", "--dir"):
+            if i + 1 >= len(rest):
+                die(f"{a} needs a value")
+            val = rest[i + 1]
+            if a == "--from":
+                src = val
+            elif a == "--rel":
+                opts["rel"] = val
+            elif a == "--depth":
+                try:
+                    opts["depth"] = int(val)
+                except ValueError:
+                    die("--depth needs an integer")
+            else:
+                if val not in ("out", "in", "both"):
+                    die("--dir must be out, in or both")
+                opts["dir"] = val
+            i += 2
+        else:
+            die(f"unexpected argument: {a}")
+    if not src:
+        die("usage: graphctl query --from ID [--rel REL] [--depth N] [--dir out|in|both]")
+    nodes, edges = graph()
+    if src not in nodes:
+        die(f"no such node: {src}")
+    hits = _walk(edges, src, opts["rel"], opts["depth"], opts["dir"])
+    emit(hits, as_json)
+
+
+def cmd_impact(args):
+    as_json = "--json" in args
+    depth = 100
+    rest = [a for a in args if a != "--json"]
+    if rest and rest[0] == "--depth":
+        depth = int(rest[1])
+        rest = rest[2:]
+    if len(rest) != 1:
+        die("usage: graphctl impact ID [--depth N]")
+    ident = rest[0]
+    nodes, edges = graph()
+    if ident not in nodes:
+        die(f"no such node: {ident}")
+    hits = _walk(edges, ident, None, depth, "in")
+    emit({"root": ident, "affected": hits}, as_json)
+
+
+def cmd_path(args):
+    as_json = "--json" in args
+    rest = [a for a in args if a != "--json"]
+    if len(rest) != 2:
+        die("usage: graphctl path A B")
+    a, b = rest
+    nodes, edges = graph()
+    for end in (a, b):
+        if end not in nodes:
+            die(f"no such node: {end}")
+    prev = {a: None}
+    queue = [a]
+    while queue:
+        cur = queue.pop(0)
+        if cur == b:
+            break
+        for e in edges:
+            if e["src"] == cur and e["dst"] not in prev:
+                prev[e["dst"]] = (cur, e["rel"])
+                queue.append(e["dst"])
+    if b not in prev:
+        emit({"path": None}, as_json)
+        return
+    path = []
+    cur = b
+    while prev[cur] is not None:
+        parent, rel = prev[cur]
+        path.append({"from": parent, "rel": rel, "to": cur})
+        cur = parent
+    path.reverse()
+    emit({"path": path}, as_json)
+
+
+def cmd_stats(args):
+    as_json = "--json" in args
+    nodes, edges = graph()
+    by_kind = {}
+    for n in nodes.values():
+        by_kind[n["kind"]] = by_kind.get(n["kind"], 0) + 1
+    by_rel = {}
+    for e in edges:
+        by_rel[e["rel"]] = by_rel.get(e["rel"], 0) + 1
+    out = {"nodes": len(nodes), "edges": len(edges),
+           "by_kind": dict(sorted(by_kind.items())),
+           "by_rel": dict(sorted(by_rel.items()))}
+    emit(out, as_json)
+
+
+# ---------------------------------------------------------------- validation
+
+def validate(nodes, edges):
+    problems = []
+    for ident, n in nodes.items():
+        if n.get("kind") not in KINDS:
+            problems.append(f"node {ident}: unknown kind {n.get('kind')!r}")
+        if not ident:
+            problems.append("node with empty id")
+        for key in n:
+            if key not in ("id", "kind", "attrs"):
+                problems.append(f"node {ident}: unexpected key {key!r}")
+    seen = set()
+    for e in edges:
+        missing = MANDATORY - set(e)
+        if missing:
+            problems.append(f"edge {e}: missing {sorted(missing)}")
+            continue
+        if e["rel"] not in RELS:
+            problems.append(f"edge {e['src']} -{e['rel']}-> {e['dst']}: unknown relation")
+        for end in (e["src"], e["dst"]):
+            if end not in nodes:
+                problems.append(f"edge {e['src']} -{e['rel']}-> {e['dst']}: dangling {end}")
+        key = (e["src"], e["rel"], e["dst"])
+        if key in seen:
+            problems.append(f"duplicate edge {key}")
+        seen.add(key)
+        for key_name in e:
+            if key_name not in ("src", "rel", "dst", "attrs"):
+                problems.append(f"edge {key}: unexpected key {key_name!r}")
+    return problems
+
+
+def cmd_check(args):
+    as_json = "--json" in args
+    nodes, edges = graph()
+    problems = validate(nodes, edges)
+    if as_json:
+        print(json.dumps({"ok": not problems, "problems": problems}, indent=2))
+    else:
+        if problems:
+            for p in problems:
+                print("  " + p)
+            print(f"{len(problems)} problem(s)")
+        else:
+            print(f"ok: {len(nodes)} nodes, {len(edges)} edges, 0 problems")
+    sys.exit(0 if not problems else 1)
+
+
+# ---------------------------------------------------------------- ingest
+
+FLAG_RE = re.compile(r"(?:^|[\s(`\"'\[>])-([A-Za-z0-9][A-Za-z0-9_.+#-]*)")
+
+
+def slug(text):
+    text = text.strip().lower()
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+    return text.strip("-") or "section"
+
+
+def parse_recipe(path):
+    attrs = {}
+    packages = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, val = line.split("=", 1)
+        key, val = key.strip(), val.strip()
+        if key == "packages":
+            packages.append(val)
+        else:
+            attrs.setdefault(key, val)
+    return attrs, packages
+
+
+def _declared():
+    """Entries added by hand (origin=declared) that ingest must preserve."""
+    nodes, edges = graph()
+    dn = [n for n in nodes.values()
+          if n.get("attrs", {}).get("origin") == "declared"]
+    de = [e for e in edges
+          if e.get("attrs", {}).get("origin") == "declared"]
+    return dn, de
+
+
+def build_ingest():
+    nodes = {}
+    edges = []
+
+    def node(ident, kind, **attrs):
+        nodes[ident] = {"id": ident, "kind": kind,
+                        **({"attrs": attrs} if attrs else {})}
+
+    seen_edges = set()
+
+    def edge(src, rel, dst):
+        key = (src, rel, dst)
+        if key in seen_edges:
+            return
+        seen_edges.add(key)
+        edges.append({"src": src, "rel": rel, "dst": dst})
+
+    # repo root
+    node("repo:vroot", "repo", name="vroot")
+
+    # main module
+    src_path = BASE / "vroot"
+    text = src_path.read_text(encoding="utf-8")
+    version = ""
+    m = re.search(r'^VERSION="([^"]+)"', text, re.M)
+    if m:
+        version = m.group(1)
+    node("module:vroot", "module", path="vroot", language="bash",
+         lines=str(text.count("\n") + 1), version=version)
+    edge("repo:vroot", "contains", "module:vroot")
+
+    commands = sorted(set(re.findall(r"\bcmd_([a-z][a-z0-9_]*)\b", text)))
+    functions = sorted(set(re.findall(r"^([a-z][a-z0-9_]*)\(\)", text, re.M)))
+    for name in functions:
+        if name.startswith("cmd_"):
+            continue
+        ident = f"function:{name}"
+        node(ident, "function", module="vroot")
+        edge("module:vroot", "contains", ident)
+    for name in commands:
+        ident = f"command:{name}"
+        node(ident, "command", module="vroot")
+        edge("module:vroot", "contains", ident)
+
+    # bases
+    for base in ("alpine", "debian"):
+        node(f"base:{base}", "base", name=base)
+
+    # recipes + flags
+    flag_owner = {}
+    pending_docs = []
+    for conf in sorted((BASE / "recipes").glob("*.conf")):
+        attrs, packages = parse_recipe(conf)
+        name = attrs.get("name") or conf.stem
+        provides = attrs.get("provides") or name
+        base = attrs.get("base") or "alpine"
+        ident = f"recipe:{name}"
+        node(ident, "recipe", file=f"recipes/{conf.name}", base=base,
+             description=attrs.get("description", ""),
+             packages=" ".join(p for p in packages if p),
+             flag=name)
+        edge("repo:vroot", "contains", ident)
+        edge(ident, "based_on", f"base:{base}")
+        tokens = [t for t in re.split(r"[,\s]+", provides) if t]
+        for tok in tokens:
+            fid = f"flag:{tok}"
+            if fid not in nodes:
+                node(fid, "flag", name=tok)
+            edge(ident, "provides", fid)
+            flag_owner.setdefault(tok, name)
+        if name not in tokens:
+            fid = f"flag:{name}"
+            if fid not in nodes:
+                node(fid, "flag", name=name)
+            edge(ident, "provides", fid)
+            flag_owner.setdefault(name, name)
+        docs = attrs.get("docs", "")
+        if docs.startswith("docs/"):
+            pending_docs.append((ident, docs))
+
+    # docs
+    doc_paths = [BASE / "README.md"] + sorted((BASE / "docs").glob("*.md"))
+    for path in doc_paths:
+        rel = str(path.relative_to(BASE))
+        text = path.read_text(encoding="utf-8")
+        ident = f"doc:{rel}"
+        node(ident, "doc", path=rel)
+        edge("repo:vroot", "contains", ident)
+        heading = ""
+        for line in text.splitlines():
+            if line.startswith("# "):
+                heading = line[2:].strip()
+                break
+        if heading:
+            nodes[ident].setdefault("attrs", {})["title"] = heading
+        current = None
+        for line in text.splitlines():
+            if re.match(r"^#{2,3}\s+\S", line):
+                title = line.lstrip("#").strip()
+                sid = f"section:{rel}#{slug(title)}"
+                node(sid, "section", doc=rel, title=title)
+                edge(ident, "contains", sid)
+                current = sid
+            elif current and line.strip():
+                pass
+        # mentions: section-level when sections exist, else doc-level
+        lines = text.splitlines()
+        current = f"doc:{rel}"
+        for line in lines:
+            if re.match(r"^#{2,3}\s+\S", line):
+                current = f"section:{rel}#{slug(line.lstrip('#').strip())}"
+            for m2 in FLAG_RE.finditer(line):
+                tok = m2.group(1).rstrip(".,;:")
+                if tok in flag_owner:
+                    edge(current, "mentions", f"flag:{tok}")
+
+    for ident, docs in pending_docs:
+        if f"doc:{docs}" in nodes:
+            edge(ident, "documents", f"doc:{docs}")
+
+    # ADRs
+    adr_dir = BASE / "docs" / "decisions"
+    if adr_dir.is_dir():
+        for path in sorted(adr_dir.glob("*.md")):
+            rel = str(path.relative_to(BASE))
+            text = path.read_text(encoding="utf-8")
+            ident = f"adr:{path.stem}"
+            title = ""
+            status = ""
+            for line in text.splitlines():
+                if line.startswith("# ") and not title:
+                    title = line[2:].strip()
+                if line.lower().startswith("status:") and not status:
+                    status = line.split(":", 1)[1].strip()
+            attrs = {"path": rel}
+            if title:
+                attrs["title"] = title
+            if status:
+                attrs["status"] = status
+            node(ident, "adr", **attrs)
+            edge("repo:vroot", "contains", ident)
+            for m2 in FLAG_RE.finditer(text):
+                tok = m2.group(1).rstrip(".,;:")
+                if tok in flag_owner:
+                    edge(ident, "mentions", f"flag:{tok}")
+
+    declared_nodes, declared_edges = _declared()
+    for n in declared_nodes:
+        nodes.setdefault(n["id"], n)
+    for e in declared_edges:
+        if e["src"] in nodes and e["dst"] in nodes:
+            edges.append(e)
+        else:
+            print(f"note: dropping declared edge {e['src']} -{e['rel']}-> {e['dst']} "
+                  "(endpoint no longer exists)", file=sys.stderr)
+
+    return nodes, edges
+
+
+def _diff_summary(old_nodes, old_edges, new_nodes, new_edges):
+    old_n = set(old_nodes) if not isinstance(old_nodes, dict) else set(old_nodes.keys())
+    new_n = set(new_nodes) if not isinstance(new_nodes, dict) else set(new_nodes.keys())
+    old_e = {(e["src"], e["rel"], e["dst"]) for e in old_edges}
+    new_e = {(e["src"], e["rel"], e["dst"]) for e in new_edges}
+    return {
+        "added_nodes": sorted(new_n - old_n),
+        "removed_nodes": sorted(old_n - new_n),
+        "added_edges": sorted(new_e - old_e),
+        "removed_edges": sorted(old_e - new_e),
+    }
+
+
+def cmd_ingest(args):
+    write = "--write" in args
+    as_json = "--json" in args
+    nodes, edges = build_ingest()
+    problems = validate(nodes, edges)
+    if problems:
+        for p in problems:
+            print("  " + p, file=sys.stderr)
+        die("ingest produced an invalid graph; refusing to write")
+    if write:
+        with Lock(LOCK_DIR):
+            save_graph(nodes, edges)
+        emit({"written": str(NODES_FILE), "nodes": len(nodes),
+              "edges": len(edges)}, as_json)
+        return
+    old_nodes, old_edges = graph()
+    diff = _diff_summary(old_nodes, old_edges, nodes, edges)
+    changed = any(diff[k] for k in diff)
+    if as_json:
+        print(json.dumps({"in_sync": not changed, **diff}, indent=2, ensure_ascii=False))
+    else:
+        if not changed:
+            print("ok: graph matches the repository")
+        else:
+            for key in ("added_nodes", "removed_nodes", "added_edges", "removed_edges"):
+                for item in diff[key][:20]:
+                    print(f"  {key}: {item}")
+                if len(diff[key]) > 20:
+                    print(f"  {key}: ... {len(diff[key]) - 20} more")
+    sys.exit(0 if not changed else 1)
+
+
+def cmd_guard(args):
+    nodes, edges = build_ingest()
+    old_nodes, old_edges = graph()
+    diff = _diff_summary(old_nodes, old_edges, nodes, edges)
+    changed = any(diff[k] for k in diff)
+    if changed:
+        print("graph is stale; run: python3 tools/graphctl ingest --write", file=sys.stderr)
+        for key in ("added_nodes", "removed_nodes", "added_edges", "removed_edges"):
+            for item in diff[key][:10]:
+                print(f"  {key}: {item}", file=sys.stderr)
+    else:
+        print("ok: graph is in sync with the repository")
+    sys.exit(0 if not changed else 1)
+
+
+# ---------------------------------------------------------------- index
+
+def cmd_index(args):
+    as_json = "--json" in args
+    db = INDEX_FILE
+    if "--db" in args:
+        db = Path(args[args.index("--db") + 1])
+    import sqlite3
+
+    nodes, edges = graph()
+    db.parent.mkdir(parents=True, exist_ok=True)
+    tmp = db.with_name(db.name + f".tmp.{os.getpid()}")
+    if tmp.exists():
+        tmp.unlink()
+    con = sqlite3.connect(tmp)
+    con.execute("CREATE TABLE nodes (id TEXT PRIMARY KEY, kind TEXT NOT NULL, attrs TEXT)")
+    con.execute("CREATE TABLE edges (src TEXT NOT NULL, rel TEXT NOT NULL, dst TEXT NOT NULL, attrs TEXT)")
+    con.executemany(
+        "INSERT INTO nodes VALUES (?,?,?)",
+        [(n["id"], n["kind"], json.dumps(n.get("attrs", {}), ensure_ascii=False)) for n in nodes.values()],
+    )
+    con.executemany(
+        "INSERT INTO edges VALUES (?,?,?,?)",
+        [(e["src"], e["rel"], e["dst"], json.dumps(e.get("attrs", {}), ensure_ascii=False)) for e in edges],
+    )
+    con.execute("CREATE INDEX edges_src ON edges(src, rel)")
+    con.execute("CREATE INDEX edges_dst ON edges(dst, rel)")
+    con.execute("CREATE INDEX nodes_kind ON nodes(kind)")
+    con.commit()
+    con.close()
+    os.replace(tmp, db)
+    emit({"index": str(db), "nodes": len(nodes), "edges": len(edges)}, as_json)
+
+
+def cmd_sql(args):
+    as_json = "--json" in args
+    rest = [a for a in args if a != "--json"]
+    if not rest:
+        die("usage: graphctl sql \"SELECT ...\"")
+    query = " ".join(rest)
+    if not query.lstrip().lower().startswith(("select", "with", "explain")):
+        die("only read-only queries are allowed (SELECT/WITH/EXPLAIN)")
+    if not INDEX_FILE.exists():
+        cmd_index([])
+    import sqlite3
+
+    con = sqlite3.connect(f"file:{INDEX_FILE}?mode=ro", uri=True)
+    try:
+        cur = con.execute(query)
+    except sqlite3.Error as exc:
+        die(f"sql: {exc}")
+    cols = [d[0] for d in cur.description or []]
+    rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+    con.close()
+    if as_json:
+        print(json.dumps(rows, ensure_ascii=False, indent=2))
+    else:
+        print("\t".join(cols))
+        for row in rows:
+            print("\t".join("" if row[c] is None else str(row[c]) for c in cols))
+
+
+# ---------------------------------------------------------------- export
+
+def cmd_export(args):
+    fmt = "json"
+    if "--format" in args:
+        fmt = args[args.index("--format") + 1]
+    nodes, edges = graph()
+    if fmt == "json":
+        print(json.dumps({"nodes": sorted(nodes.values(), key=lambda n: n["id"]),
+                          "edges": sorted(edges, key=lambda e: (e["src"], e["rel"], e["dst"]))},
+                         ensure_ascii=False, indent=2))
+    elif fmt == "dot":
+        print("digraph vroot {")
+        print('  rankdir=LR; node [shape=box, fontname="monospace"];')
+        for n in sorted(nodes.values(), key=lambda n: n["id"]):
+            print(f'  "{n["id"]}" [label="{n["id"]}"];')
+        for e in sorted(edges, key=lambda e: (e["src"], e["rel"], e["dst"])):
+            print(f'  "{e["src"]}" -> "{e["dst"]}" [label="{e["rel"]}"];')
+        print("}")
+    elif fmt == "mermaid":
+        def mid(ident):
+            return re.sub(r"[^A-Za-z0-9_]", "_", ident)
+
+        print("graph LR")
+        for e in sorted(edges, key=lambda e: (e["src"], e["rel"], e["dst"])):
+            print(f'  {mid(e["src"])}["{e["src"]}"] -->|{e["rel"]}| {mid(e["dst"])}["{e["dst"]}"]')
+    elif fmt == "md":
+        print("| src | rel | dst |")
+        print("| --- | --- | --- |")
+        for e in sorted(edges, key=lambda e: (e["src"], e["rel"], e["dst"])):
+            print(f'| `{e["src"]}` | {e["rel"]} | `{e["dst"]}` |')
+    else:
+        die("usage: graphctl export [--format json|dot|mermaid|md]")
+
+
+# ---------------------------------------------------------------- schema/help
+
+def cmd_schema(args):
+    as_json = "--json" in args
+    if as_json:
+        print(json.dumps({"kinds": KINDS, "relations": RELS,
+                          "node": {"id": "str", "kind": "str", "attrs": "map[str,str]"},
+                          "edge": {"src": "str", "rel": "str", "dst": "str", "attrs": "map[str,str]"},
+                          "files": {"nodes": "graph/nodes.jsonl", "edges": "graph/edges.jsonl"}},
+                         indent=2))
+        return
+    print("node kinds:")
+    for k, desc in KINDS.items():
+        print(f"  {k:<10} {desc}")
+    print("\nrelations:")
+    for r, desc in RELS.items():
+        print(f"  {r:<10} {desc}")
+    print("\nfiles: graph/nodes.jsonl, graph/edges.jsonl (source of truth)")
+    print("derived: graph/index.sqlite (git-ignored), exports")
+
+
+def cmd_help(args):
+    print(__doc__.strip())
+    print("""
+commands:
+  add KIND ID [k=v ...]        create a node (or: add KIND:ID [k=v ...])
+  set ID [k=v ...]             merge attributes
+  link SRC REL DST [k=v ...]   create an edge
+  unlink SRC REL DST           remove an edge
+  rm ID [--cascade]            remove a node (and its edges)
+  get ID                       show a node with its edges
+  list [--kind KIND]           list node ids
+  query --from ID [--rel R] [--depth N] [--dir out|in|both]
+  impact ID                    everything that (transitively) depends on ID
+  path A B                     shortest directed path
+  stats                        counts by kind and relation
+  check                        validate integrity (exit 1 on problems)
+  ingest [--write]             rebuild from the repository; without --write, report drift
+  guard                        alias of ingest without --write (CI drift check)
+  index [--db PATH]            build the SQLite index
+  sql "SELECT ..."             read-only query against the index
+  export [--format json|dot|mermaid|md]
+  schema                       node kinds and relations
+  help                         this text
+
+every command accepts --json for machine-readable output.
+""")
+
+
+COMMANDS = {
+    "add": cmd_add, "set": cmd_set, "link": cmd_link, "unlink": cmd_unlink,
+    "rm": cmd_rm, "get": cmd_get, "list": cmd_list, "query": cmd_query,
+    "impact": cmd_impact, "path": cmd_path, "stats": cmd_stats,
+    "check": cmd_check, "ingest": cmd_ingest, "guard": cmd_guard,
+    "index": cmd_index, "sql": cmd_sql, "export": cmd_export,
+    "schema": cmd_schema, "help": cmd_help,
+}
+
+
+def main(argv):
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        cmd_help([])
+        return 0
+    cmd = argv[0]
+    if cmd not in COMMANDS:
+        die(f"unknown command {cmd!r} (try: graphctl help)")
+    return COMMANDS[cmd](argv[1:]) or 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
