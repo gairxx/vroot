@@ -10,3 +10,8 @@ vroot.legacy
 *~
 .DS_Store
 dist/
+
+# Derived graph artifacts (rebuild with: python3 tools/graphctl index)
+graph/index.sqlite
+graph/.lock
+graph/*.tmp.*
